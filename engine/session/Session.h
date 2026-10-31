@@ -78,6 +78,9 @@ public:
     void clipClearAll();                  // every loop: the looper is clean again
     void loopDouble();                    // loop twice as long, the content repeated (up to 3 min)
     void loopHalve();                     // half as long, the second half dropped
+    void scrubBegin(float fraction);      // a finger on the timeline: the tape follows it with a smoothed speed (forward / backward, pitch follows)
+    void scrubMove(float fraction);
+    void scrubEnd();                      // the finger lifts: the tape returns to the transport speed, or comes to a stop
     void seek(float fraction);            // move the playhead to a place of the loop (0..1): all loops share it
     void setLoopSpeed(float speed);       // 0.25..2, tape speed of all loops together; 1 = locked to the transport
     void setLoopSource(int src);          // what the loop records: 0 microphone, 1 the track's sound

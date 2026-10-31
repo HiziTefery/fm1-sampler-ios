@@ -66,7 +66,8 @@ public:
     void endRecording();                          // PLAY / STOP while recording: the take ends, the loop keeps playing
     void loopRecord();                            // REC: arm / end the first take, or toggle overdub once a loop exists
     void lenAction(bool dbl);
-    void seek(float fraction) { s_.seek(fraction); }   // phone timeline: scrub the playhead
+    void seek(float fraction) { s_.seek(fraction); }
+    void scrub(int phase /*0 down 1 move 2 up*/, float fraction) { if (phase == 0) s_.scrubBegin(fraction); else if (phase == 1) s_.scrubMove(fraction); else s_.scrubEnd(); }   // phone timeline
     void autoTune();                              // MELODIC / ONE-SHOT: detect the pitch of the sample and tune the keys to it (again: reset)
     bool tuned(int t) const { return ts_[t].tuned; }
     void loopSave();

@@ -348,8 +348,7 @@ void SamplerUI::timeline(Rect r) {
     const float hx = tx + std::min(1.f, loopPos()) * tw;
     line(hx, r.y + 8, hx, wy + wh, kOrange, 2);
     tri(hx - 5, r.y + 6, hx + 5, r.y + 6, hx, r.y + 14, kOrange);
-    auto seek = [this, tx, tw](float x, float) { app_.seek(clamp01((x - tx) / tw)); };
-    hit({tx, r.y, tw, r.h}, seek, seek);
+    hit({tx, r.y, tw, r.h}, [this, tx, tw](float x, float) { app_.scrub(0, clamp01((x - tx) / tw)); }, [this, tx, tw](float x, float) { app_.scrub(1, clamp01((x - tx) / tw)); }, [this] { app_.scrub(2, 0); });
 }
 
 void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool) {

@@ -113,6 +113,23 @@ int main() {
       const float mf = s.detectRoot(5); CHECK(std::fabs(mf - 57.3f) < 0.15f, "...and a tone 30 cents sharp as 57.3 (%.3f)", mf);
       app.selectTrack(5); app.setAlgo(0); run(0.2); app.autoTune(); run(0.2); CHECK(app.tuned(5), "autoTune marks the track tuned"); app.autoTune(); CHECK(!app.tuned(5), "...and a second tap resets it");
       app.setAlgo(2); app.autoTune(); CHECK(!app.tuned(5), "no auto-tune in LOOPED mode"); app.setAlgo(0); app.selectTrack(0); }
+    {   // scrubbing the timeline with a finger: smooth, forward and backward, no clicks; the tape returns to speed when the finger lifts
+      app.selectTrack(0); app.loopRecord(); run(0.1); app.playNote(60, true); run(0.8); app.playNote(60, false); app.playNote(67, true); run(0.8); app.playNote(67, false); run(0.2);
+      app.transportPlay(); run(0.6);
+      auto maxStep = [&](size_t m0) { float mx = 0; for (size_t i = m0 + 2; i < all.size(); i += 2) mx = std::max(mx, std::fabs(all[i] - all[i - 2])); return mx; };
+      CHECK(app.loopExists() && app.status().playing, "a loop plays (for the scrub test)");
+      size_t b0 = all.size(); run(1.0); const float base = maxStep(b0);
+      size_t s0 = all.size(); app.scrub(0, 0.5f); run(0.1);
+      for (int k = 0; k < 24; k++) { app.scrub(1, 0.5f + 0.35f * (float)std::sin(k * 0.45)); run(0.04); }
+      app.scrub(1, 0.2f); run(0.7); const float at = app.status().clipPos[0];
+      CHECK(std::fabs(at - 0.2f) < 0.05f, "the tape follows the finger to its place (%.3f, wanted 0.2)", at);
+      app.scrub(2, 0); run(0.8);
+      const float sm = maxStep(s0);
+      CHECK(sm < 5.f * base + 0.1f, "no clicks while scrubbing (largest step %.3f, normal playback %.3f)", sm, base);
+      const float p1 = app.status().clipPos[0]; run(0.3); CHECK(std::fabs(app.status().clipPos[0] - p1) > 0.02f && app.status().playing, "after the finger lifts the loop plays on (%.3f -> %.3f)", p1, app.status().clipPos[0]);
+      app.transportPlay(); run(1.2); const float ps = app.status().clipPos[0]; app.scrub(0, 0.6f); run(0.3); app.scrub(2, 0); run(0.8);
+      CHECK(!app.status().playing && std::fabs(app.status().clipPos[0] - 0.6f) < 0.06f, "scrubbing a stopped tape moves it, it stays stopped afterwards (%.3f -> %.3f)", ps, app.status().clipPos[0]);
+      app.loopClear(); run(0.3); }
     // microphone sample
     btn(SamplerApp::SAVE);
     enc(2, 1); run(0.3); CHECK(app.micState() == 1, "mic sampling waits for sound");
