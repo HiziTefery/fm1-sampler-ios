@@ -178,23 +178,19 @@ void SamplerUI::cassette(Rect c) {
     if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 14, lb.y + 33, 4.5f, kOrange); }
     // the tape loop: one closed ribbon round two rollers; it runs once round per loop, the orange dot is the splice = the start of the loop
     Rect wd{c.x + c.w * 0.07f, lb.y + lb.h + 8, c.w * 0.86f, c.h - (lb.h + 12) - 8 - 32 + 14};
-    // The ribbon runs round seven posts, like a loop in a real cassette: two big rollers (convex) and small guides that bend it the other way (S-bends).
+    // The ribbon runs over two wheels (a big and a small one) and one roller inside the loop that pushes it out into a bend.
     // Between two posts it is a common tangent, round a post an arc: the path is built from those.
-    struct Post { float x, y, r; int s; };   // s: +1 / -1 = which side of the ribbon the post sits on
+    struct Post { float x, y, r; int s; };   // s = -1: the post is inside the ribbon (it wraps round it), +1: outside
     const float W0 = wd.w, H0 = wd.h;
-    const Post posts[7] = {
-        {wd.x + 0.20f * W0, wd.y + 0.50f * H0, 0.25f * H0, -1},   // big roller, left
-        {wd.x + 0.40f * W0, wd.y + 0.88f * H0, 0.075f * H0, +1},  // guide below the bottom run
-        {wd.x + 0.52f * W0, wd.y + 0.64f * H0, 0.075f * H0, -1},  // guide above it: the ribbon dips and rises
-        {wd.x + 0.65f * W0, wd.y + 0.88f * H0, 0.075f * H0, +1},
-        {wd.x + 0.84f * W0, wd.y + 0.48f * H0, 0.19f * H0, -1},   // big roller, right
-        {wd.x + 0.66f * W0, wd.y + 0.14f * H0, 0.075f * H0, +1},  // guides in the top run
-        {wd.x + 0.42f * W0, wd.y + 0.38f * H0, 0.075f * H0, -1},
+    const Post posts[3] = {
+        {wd.x + 0.22f * W0, wd.y + 0.52f * H0, 0.31f * H0, -1},   // big wheel
+        {wd.x + 0.80f * W0, wd.y + 0.50f * H0, 0.20f * H0, -1},   // small wheel
+        {wd.x + 0.52f * W0, wd.y + 0.23f * H0, 0.10f * H0, -1},   // the roller: inside, under the top run, it pushes the ribbon out
     };
     struct Seg { bool arc; float x0, y0, x1, y1, cx, cy, r, a0, da, len; };
     std::vector<Seg> segs;
     {
-        const int N = 7; float phi[N], px[N][2], qx[N][2];   // exit point of post i, entry point of post i
+        const int N = 3; float phi[N], px[N][2], qx[N][2];   // exit point of post i, entry point of post i
         for (int i = 0; i < N; i++) {
             const Post &a = posts[i], &b = posts[(i + 1) % N];
             const float dx = b.x - a.x, dy = b.y - a.y, D = std::sqrt(dx * dx + dy * dy), k = b.s * b.r - a.s * a.r;
@@ -233,9 +229,9 @@ void SamplerUI::cassette(Rect c) {
             line(g.cx + g.r * std::cos(u0), g.cy + g.r * std::sin(u0), g.cx + g.r * std::cos(u1), g.cy + g.r * std::sin(u1), tapeCol, 2.5f);
         }
     }
-    const float spin = -turn * 2 * kPi * 3;
-    reel(posts[0].x, posts[0].y, posts[0].r - 3, spin); reel(posts[4].x, posts[4].y, posts[4].r - 3, spin * posts[0].r / posts[4].r);
-    for (int i : {1, 2, 3, 5, 6}) { circle(posts[i].x, posts[i].y, posts[i].r, kPaper); circle(posts[i].x, posts[i].y, posts[i].r - 1.8f, kBg); circle(posts[i].x, posts[i].y, 1, kPaper); }
+    const int t0 = std::max(1, (int)std::lround(per / (2 * kPi * posts[0].r))), t1 = std::max(1, (int)std::lround(per / (2 * kPi * posts[1].r))), t2 = std::max(1, (int)std::lround(per / (2 * kPi * posts[2].r)));
+    reel(posts[0].x, posts[0].y, posts[0].r - 3, -turn * 2 * kPi * t0); reel(posts[1].x, posts[1].y, posts[1].r - 3, -turn * 2 * kPi * t1);
+    reel(posts[2].x, posts[2].y, posts[2].r - 1.5f, -turn * 2 * kPi * t2);
     float x, y; at(turn * per, x, y); circle(x, y, 5, recNow ? kPaper : kOrange);
 }
 
@@ -308,26 +304,22 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
 void SamplerUI::deck(Rect r) {
     rrect({0, 0, W_, H_}, 0, kBg);
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
-    text(W_ / 2, 18, 11, recOn || armed ? kOrange : kPaper, app_.loopText() + "   SRC " + std::string(app_.knobs(SamplerApp::P_SAVE)[1].value), 1, true);
-    tap({W_ / 2 - 150, 4, 300, 28}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
-    circle(W_ - 24, 18, 4, linkMidi_ && linkAudio_ ? kPaper : linkMidi_ ? kOrange : kLine);
-    text(W_ - 34, 18, 9.5f, kDim, std::string(linkMidi_ ? "FM-1  " : "NO FM-1  ") + "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, true);
-    const float top = 34, ch = 176, cw = std::min(ch * 1.75f, W_ * 0.42f);
+    const float top = 12, ch = 192, cw = std::min(ch * 1.75f, W_ * 0.42f);
     const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
     auto smooth = [](float& vu, float peak) { const float db = peak > 1e-4f ? 20 * std::log10(peak) : -80.f; const float t = clamp01((db + 38.f) / 41.f); vu += (t - vu) * (t > vu ? 0.55f : 0.14f); return vu; };
     const float vl = smooth(vu_[0], st_.master_peak), vr = smooth(vu_[1], st_.track_peak[app_.track()]);
-    const float vw = (w0 - 14) / 2, vh = 56;
+    const float vw = (w0 - 14) / 2, vh = 60;
     vu({x0, top + 4, vw, vh}, vl, "MASTER");
     vu({x0 + vw + 14, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
-    const float py = top + vh + 24;
+    const float py = top + vh + 28;
     text(x0, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
     for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
         Rect nr{zr - (10 - i) * 22.f, py - 11, 22, 22};
         rrect({nr.x + 3, py - 3, 16, 6}, 0, kTabs[i] == app_.page() ? kOrange : kLine);
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
-    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 46, app_.page(), i);
+    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 50, app_.page(), i);
     const float ty = H_ - 46;
     timeline({24, top + ch + 16, W_ - 48, ty - 8 - (top + ch + 16)});
     struct K { const char* l; int icon; bool on; std::function<void()> f; };
