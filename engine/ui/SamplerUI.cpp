@@ -178,21 +178,65 @@ void SamplerUI::cassette(Rect c) {
     if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 14, lb.y + 33, 4.5f, kOrange); }
     // the tape loop: one closed ribbon round two rollers; it runs once round per loop, the orange dot is the splice = the start of the loop
     Rect wd{c.x + c.w * 0.07f, lb.y + lb.h + 8, c.w * 0.86f, c.h - (lb.h + 12) - 8 - 32 + 14};
-    const float cy = wd.y + wd.h / 2, rho = wd.h / 2 - 10, rr = rho - 5;
-    const float cxL = wd.x + wd.w * 0.27f, cxR = wd.x + wd.w * 0.73f, L = cxR - cxL, arc = kPi * rho, per = 2 * L + 2 * arc;
-    const float turn = hasLoop ? lp : st_.freeRecording ? std::fmod((float)now_ / 2500.f, 1.f) : 0.f;
+    // The ribbon runs round seven posts, like a loop in a real cassette: two big rollers (convex) and small guides that bend it the other way (S-bends).
+    // Between two posts it is a common tangent, round a post an arc: the path is built from those.
+    struct Post { float x, y, r; int s; };   // s: +1 / -1 = which side of the ribbon the post sits on
+    const float W0 = wd.w, H0 = wd.h;
+    const Post posts[7] = {
+        {wd.x + 0.20f * W0, wd.y + 0.50f * H0, 0.25f * H0, -1},   // big roller, left
+        {wd.x + 0.40f * W0, wd.y + 0.88f * H0, 0.075f * H0, +1},  // guide below the bottom run
+        {wd.x + 0.52f * W0, wd.y + 0.64f * H0, 0.075f * H0, -1},  // guide above it: the ribbon dips and rises
+        {wd.x + 0.65f * W0, wd.y + 0.88f * H0, 0.075f * H0, +1},
+        {wd.x + 0.84f * W0, wd.y + 0.48f * H0, 0.19f * H0, -1},   // big roller, right
+        {wd.x + 0.66f * W0, wd.y + 0.14f * H0, 0.075f * H0, +1},  // guides in the top run
+        {wd.x + 0.42f * W0, wd.y + 0.38f * H0, 0.075f * H0, -1},
+    };
+    struct Seg { bool arc; float x0, y0, x1, y1, cx, cy, r, a0, da, len; };
+    std::vector<Seg> segs;
+    {
+        const int N = 7; float phi[N], px[N][2], qx[N][2];   // exit point of post i, entry point of post i
+        for (int i = 0; i < N; i++) {
+            const Post &a = posts[i], &b = posts[(i + 1) % N];
+            const float dx = b.x - a.x, dy = b.y - a.y, D = std::sqrt(dx * dx + dy * dy), k = b.s * b.r - a.s * a.r;
+            phi[i] = std::atan2(dy, dx) - std::asin(std::max(-1.f, std::min(1.f, k / D)));
+            const float nx = -std::sin(phi[i]), ny = std::cos(phi[i]);
+            px[i][0] = a.x - a.s * a.r * nx; px[i][1] = a.y - a.s * a.r * ny;
+            qx[(i + 1) % N][0] = b.x - b.s * b.r * nx; qx[(i + 1) % N][1] = b.y - b.s * b.r * ny;
+        }
+        for (int i = 0; i < N; i++) {
+            const int j = (i + 1) % N; const Post& b = posts[j];
+            Seg l{false, px[i][0], px[i][1], qx[j][0], qx[j][1], 0, 0, 0, 0, 0, 0}; l.len = std::hypot(l.x1 - l.x0, l.y1 - l.y0); segs.push_back(l);
+            const float a0 = std::atan2(qx[j][1] - b.y, qx[j][0] - b.x), a1 = std::atan2(px[j][1] - b.y, px[j][0] - b.x);
+            float da = a1 - a0;
+            if (b.s > 0) { while (da < 0) da += 2 * kPi; while (da > 2 * kPi) da -= 2 * kPi; } else { while (da > 0) da -= 2 * kPi; while (da < -2 * kPi) da += 2 * kPi; }
+            Seg ar{true, 0, 0, 0, 0, b.x, b.y, b.r, a0, da, b.r * std::fabs(da)}; segs.push_back(ar);
+        }
+    }
+    float per = 0; for (const Seg& g : segs) per += g.len;
     auto at = [&](float sp, float& x, float& y) {
         sp = std::fmod(sp + per, per);
-        if (sp < L) { x = cxL + sp; y = cy + rho; }
-        else if (sp < L + arc) { const float f = (sp - L) / rho; x = cxR + rho * std::sin(f); y = cy + rho * std::cos(f); }
-        else if (sp < 2 * L + arc) { x = cxR - (sp - L - arc); y = cy - rho; }
-        else { const float f = (sp - 2 * L - arc) / rho; x = cxL - rho * std::sin(f); y = cy - rho * std::cos(f); }
+        for (const Seg& g : segs) {
+            if (sp > g.len) { sp -= g.len; continue; }
+            if (!g.arc) { const float f = g.len > 0 ? sp / g.len : 0; x = g.x0 + (g.x1 - g.x0) * f; y = g.y0 + (g.y1 - g.y0) * f; }
+            else { const float an = g.a0 + g.da * (g.len > 0 ? sp / g.len : 0); x = g.cx + g.r * std::cos(an); y = g.cy + g.r * std::sin(an); }
+            return;
+        }
+        x = segs[0].x0; y = segs[0].y0;
     };
-    reel(cxL, cy, rr, -turn * 2 * kPi * 3); reel(cxR, cy, rr, -turn * 2 * kPi * 3);
-    float px, py, x, y; at(0, px, py);
-    const int segs = 80;
-    for (int i = 1; i <= segs; i++) { at(per * i / segs, x, y); line(px, py, x, y, recNow ? kOrange : kPaper, 3); px = x; py = y; }
-    at(turn * per, x, y); circle(x, y, 6, recNow ? kPaper : kOrange);
+    const float turn = hasLoop ? lp : st_.freeRecording ? std::fmod((float)now_ / 2500.f, 1.f) : 0.f;
+    const uint32_t tapeCol = recNow ? kOrange : kPaper;
+    for (const Seg& g : segs) {
+        if (!g.arc) { line(g.x0, g.y0, g.x1, g.y1, tapeCol, 2.5f); continue; }
+        const int n = std::max(2, (int)(std::fabs(g.da) / 0.2f));
+        for (int i = 0; i < n; i++) {
+            const float u0 = g.a0 + g.da * i / n, u1 = g.a0 + g.da * (i + 1) / n;
+            line(g.cx + g.r * std::cos(u0), g.cy + g.r * std::sin(u0), g.cx + g.r * std::cos(u1), g.cy + g.r * std::sin(u1), tapeCol, 2.5f);
+        }
+    }
+    const float spin = -turn * 2 * kPi * 3;
+    reel(posts[0].x, posts[0].y, posts[0].r - 3, spin); reel(posts[4].x, posts[4].y, posts[4].r - 3, spin * posts[0].r / posts[4].r);
+    for (int i : {1, 2, 3, 5, 6}) { circle(posts[i].x, posts[i].y, posts[i].r, kPaper); circle(posts[i].x, posts[i].y, posts[i].r - 1.8f, kBg); circle(posts[i].x, posts[i].y, 1, kPaper); }
+    float x, y; at(turn * per, x, y); circle(x, y, 5, recNow ? kPaper : kOrange);
 }
 
 float SamplerUI::loopPos() const {
