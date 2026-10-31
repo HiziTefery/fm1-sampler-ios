@@ -127,7 +127,8 @@ void SamplerUI::reel(float cx, float cy, float r, float ang) {
 void SamplerUI::sampleView(Rect r) {
     const int t = app_.track();
     const auto ts = app_.state(t);
-    text(r.x, r.y + 8, 11, kPaper, SamplerApp::algoName(ts.algo), 0, true);
+    const int micS = app_.micState();
+    text(r.x, r.y + 8, 11, micS == 1 || micS == 2 ? kOrange : kPaper, micS == 1 ? "MIC: WAITING FOR SOUND" : micS == 2 ? "MIC: RECORDING " + num("%.1f", st_.sampleSeconds) + " S" : micS == 3 ? "MIC: SAVING" : SamplerApp::algoName(ts.algo), 0, true);
     tap({r.x, r.y, 120, 18}, [this, ts] { app_.setAlgo((ts.algo + 1) % 6); });   // tap the mode: the next one
     {   // microphone, disk and library as pictograms
         const float bw = 34, bh = 22, by = r.y - 2, bx = r.x + r.w - 3 * bw;
@@ -149,6 +150,33 @@ void SamplerUI::sampleView(Rect r) {
     const int nv = st_.voiceN[t];
     if (nv > 0) text(r.x + r.w - 3 * 34 - 8, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
     const Rect w{r.x, r.y + 20, r.w, r.h - 20};
+    if (micS == 1 || micS == 2) {   // the microphone take: the level and the trigger line while it waits, the growing take while it records; one big button ends it
+        const float cy0 = w.y + w.h / 2, half = w.h / 2 - 3;
+        Rect sb{w.x + w.w - 118, cy0 - 17, 112, 34};
+        if (micS == 1) {
+            const float thr = std::min(1.f, app_.micThreshold() * 2.f), lv = std::min(1.f, st_.inputPeak * 2.f);
+            rrect({w.x, cy0 - lv * half, w.w, std::max(2.f, lv * half * 2)}, 0, lv > thr ? kOrange : kLine);
+            line(w.x, cy0 - thr * half, w.x + w.w, cy0 - thr * half, kOrange, 1.5f);
+            line(w.x, cy0 + thr * half, w.x + w.w, cy0 + thr * half, kOrange, 1.5f);
+            text(w.x + 4, w.y + w.h - 8, 9, kDim, "DRAG UP / DOWN TO SET THE TRIGGER LEVEL  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())), 0, true);
+            auto setThr = [this, half, cy0](float, float y) { app_.setMicThreshold01(std::log10(std::max(0.0025f, std::fabs(y - cy0) / half / 2.f) / 0.005f) / 2.f); };
+            hit({w.x, w.y, w.w - 124, w.h}, setThr, setThr);
+        } else {
+            float live[2048]; const int n = app_.session().livePeaks(live, 2048);
+            const int cols = std::max(20, (int)(w.w / 3)), per = std::max(1, (n + cols - 1) / cols);
+            const float bw0 = w.w / std::max(cols, (n + per - 1) / per);
+            for (int i = 0; i * per < n; i++) {
+                float v = 0; for (int j = i * per; j < std::min(n, (i + 1) * per); j++) v = std::max(v, live[j]);
+                v = std::min(1.f, v * 1.1f);
+                rrect({w.x + i * bw0, cy0 - std::max(1.f, v * half), std::max(1.f, bw0 - 1), std::max(2.f, v * half * 2)}, 0, kPaper);
+            }
+        }
+        rrect(sb, 6, kBg);
+        rrect({sb.x + 12, sb.y + 11, 12, 12}, 1, kOrange);
+        text(sb.x + 32, sb.y + 17, 12, kOrange, micS == 1 ? "CANCEL" : "STOP", 0, true);
+        tap(sb, [this] { app_.micSample(); });
+        return;
+    }
     const int bins = std::max(20, (int)(w.w / 2.5f));
     auto pk = app_.peaks(t, bins);
     if (pk.empty()) { text(w.x + w.w / 2, w.y + w.h / 2, 10, kDim, "NO SAMPLE", 1, true); return; }
