@@ -331,9 +331,17 @@ void SamplerUI::sampleView(Rect r) {
     auto pk = app_.peaks(t, bins);
     if (pk.empty()) { text(w.x + w.w / 2, w.y + w.h / 2, 10, kDim, "NO SAMPLE", 1, true); return; }
     const float cy = w.y + w.h / 2, bw = w.w / bins;
+    const std::vector<float> sl = ts.algo == 3 ? app_.session().sliceFractions(t) : std::vector<float>();   // KIT: where the sample is cut
     for (int i = 0; i < (int)pk.size(); i++) {
         const float pos = (i + 0.5f) / bins, v = std::min(1.f, pk[(size_t)i] * 1.1f);
-        rrect({w.x + i * bw, cy - std::max(1.f, v * (w.h / 2 - 1)), std::max(1.f, bw * 0.6f), std::max(2.f, v * (w.h - 2))}, 0, pos >= ts.start && pos <= ts.end ? kPaper : kLine);
+        int si = -1; for (size_t j = 0; j + 1 < sl.size(); j++) if (pos >= sl[j] && pos < sl[j + 1]) si = (int)j;
+        const uint32_t on = si >= 0 && si % 2 ? kDim : kPaper;   // neighbouring slices alternate ink and dim
+        rrect({w.x + i * bw, cy - std::max(1.f, v * (w.h / 2 - 1)), std::max(1.f, bw * 0.6f), std::max(2.f, v * (w.h - 2))}, 0, pos >= ts.start && pos <= ts.end ? on : kLine);
+    }
+    for (size_t j = 0; j + 1 < sl.size(); j++) {   // the cuts, numbered like the keys that play them (C = 1)
+        const float x = w.x + sl[j] * w.w;
+        rrect({x - 1, w.y, 2, w.h}, 0, kOrange);
+        text(x + 4, w.y + 7, 9, kOrange, std::to_string(j + 1), 0, true);
     }
     for (int j = 0; j < nv; j++) {   // a voice: a line of constant brightness that gets shorter as its envelope dies away
         const float vx = w.x + std::min(1.f, std::max(0.f, st_.voicePos[t][j])) * w.w, lv = clamp01(st_.voiceLvl[t][j]);

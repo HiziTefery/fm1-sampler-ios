@@ -45,6 +45,14 @@ int main(int argc, char** argv) {
       app.playNote(60, true); run(0.3);
       for (int i = 0; i < 9; i++) { app.gotoPage(pgs[i]); run(0.1); ui.frame(now); dump(nm[i]); }
       app.playNote(60, false); app.gotoPage(SamplerApp::P_HOME); run(0.2); }
+    {   // the modes with their own K3 / K4: KIT on a drum sample (slices marked), GRAIN and PAUL
+      const auto& lib = app.library(); int kit = -1; for (size_t i = 0; i < lib.size(); i++) if (lib[i].kit) { kit = (int)i; break; }
+      app.selectTrack(3); if (kit >= 0) { app.loadEntry(kit); run(1.5); }
+      app.setAlgo(3); run(0.5); ui.frame(now); dump("deck_kit");
+      app.knobs(SamplerApp::P_HOME)[2].set(0.8f); run(0.3); ui.frame(now); dump("deck_kit_hi");
+      app.setAlgo(4); run(0.3); ui.frame(now); dump("deck_grain");
+      app.setAlgo(5); run(0.3); ui.frame(now); dump("deck_paul");
+      app.setAlgo(0); app.selectTrack(0); run(0.2); }
     ui.openProject(true); ui.frame(now); dump("deck_project"); ui.openProject(false);
     ui.setEditor(true);
     ui.frame(now); dump("sample");

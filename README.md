@@ -31,7 +31,7 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 | PRESETS (encoder 6) | browses the sample library; after 250 ms of rest the entry is loaded on the selected track and played (audition) |
 | ALGORITHM (encoder 1) | MELODIC, ONE-SHOT, LOOPED, KIT/SLICE, GRANULAR, PAULSTRETCH (the Sampler's MODE; KIT slices on transients, equal parts if there are none) |
 | K1..K4 (encoders 2..5) | the four parameters of the current page (below) |
-| HOME | sample: START, END, SPEED (time stretch 0.25..4x), PITCH (+-24 st). Speed and pitch are offline stretches, applied 350 ms after the knob rests |
+| HOME | sample: START, END, then K3 / K4 depend on the mode. MELODIC / ONE-SHOT / LOOPED: SPEED (time stretch 0.25..4x), PITCH (+-24 st), both offline stretches applied 350 ms after the knob rests. KIT: THRESHOLD (the level a hit must reach to start a slice, 2..60 % of the loudest part, log; START / END limit where the sample is cut; the phone marks the cuts with the number of the key that plays each, C = 1) and PITCH (every slice transposed in real time). GRAIN: GRAINS (1..12 sounding together) and GRAIN SIZE (20..300 ms). PAULSTRETCH: STRETCH (slow-down 2..64x, taken when a note starts) and WIDTH (stereo width 0..200 %) |
 | FX | REVERB SIZE, REVERB D/W (return level), DELAY TIME, DELAY FEEDBACK (global sends; per-track send levels are on MIXER) |
 | ENV | ATTACK, DECAY, SUSTAIN, RELEASE of the selected track |
 | LFO | RATE (0.1..20 Hz), DEPTH, TARGET (PITCH, FILTER, VOLUME, PAN), SHAPE (SINE, TRI, SQUARE, S&H) |

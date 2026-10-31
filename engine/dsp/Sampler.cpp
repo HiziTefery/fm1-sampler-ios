@@ -36,17 +36,31 @@ bool Sampler::load(const std::string& path) {
         float m = 0.f; for (long i = a; i < e; i += step) m = std::max(m, std::fabs(buf->d[(size_t)i * 2]));
         peaks_[(size_t)b] = m;
     }
-    slices_ = findSlices(buf->d, buf->frames, buf->sr, 16);
+    onsets_ = findOnsets(buf->d, buf->frames, buf->sr);
     const size_t slash = path.find_last_of("/\\"), dot = path.rfind('.');
     label_ = path.substr(slash == std::string::npos ? 0 : slash + 1);
     if (dot != std::string::npos && dot > (slash == std::string::npos ? 0 : slash)) label_ = label_.substr(0, label_.rfind('.'));
     orig_ = buf;
+    reslice();
     return true;
 }
 
+void Sampler::reslice() {
+    if (!orig_) return;
+    const int from = (int)(rangeA_ * orig_->frames), to = std::max(from + 64, (int)(rangeB_ * orig_->frames));
+    slices_ = pickSlices(onsets_, from, std::min(to, orig_->frames), orig_->sr, sliceThr_, 16);
+    sliceEnd_ = std::min(to, orig_->frames);
+}
+std::vector<float> Sampler::sliceFractions() const {
+    std::vector<float> f;
+    if (!orig_ || orig_->frames <= 0) return f;
+    for (int s : slices_) f.push_back((float)s / orig_->frames);
+    f.push_back((float)(sliceEnd_ / orig_->frames));
+    return f;
+}
 void Sampler::setMode(int m) { m = std::min(kModes - 1, std::max(0, m)); if (m != mode_) { allOff(); mode_ = m; } }
 void Sampler::setEnv(float a, float d, float s, float r) { atk_ = a; dec_ = d; sus_ = s; rel_ = r; }
-void Sampler::setRange(float a, float b) { rangeA_ = clampf(a, 0.f, 1.f); rangeB_ = clampf(b, 0.f, 1.f); if (rangeB_ < rangeA_ + 0.005f) rangeB_ = std::min(1.f, rangeA_ + 0.005f); }
+void Sampler::setRange(float a, float b) { rangeA_ = clampf(a, 0.f, 1.f); rangeB_ = clampf(b, 0.f, 1.f); if (rangeB_ < rangeA_ + 0.005f) rangeB_ = std::min(1.f, rangeA_ + 0.005f); reslice(); }
 void Sampler::setProcessed(std::shared_ptr<const SampleBuf> p, float a, float b) { allOff(); proc_ = std::move(p); procA_ = a; procB_ = std::max(a + 0.001f, b); }
 
 void Sampler::resolveWindow(Voice& v, const SampleBuf*& buf, double& ws, double& we) const {
@@ -54,7 +68,7 @@ void Sampler::resolveWindow(Voice& v, const SampleBuf*& buf, double& ws, double&
         buf = orig_.get();
         if (mode_ == KIT) {
             const int n = (int)slices_.size(), i = v.slice % n;
-            ws = slices_[(size_t)i]; we = i + 1 < n ? slices_[(size_t)i + 1] : buf->frames;
+            ws = slices_[(size_t)i]; we = i + 1 < n ? slices_[(size_t)i + 1] : sliceEnd_;
         } else { ws = rangeA_ * buf->frames; we = rangeB_ * buf->frames; }
     } else {
         buf = proc_.get();   // a stretched copy of [procA, procB]: the window is the same range inside it
@@ -83,7 +97,7 @@ void Sampler::noteOn(int note, int vel) {
     v.env.set(atk_, dec_, sus_, rel_, (float)sr_);
     if (mode_ == ONESHOT) v.env.set(0.002f, 0.01f, 1.f, 0.01f, (float)sr_);
     v.env.gateOn();
-    if (mode_ == PAUL) { v.paulIdx = vi; paul_[(size_t)vi]->start(v.buf->d.data(), v.buf->frames, v.ws, v.we, 8.f); }
+    if (mode_ == PAUL) { v.paulIdx = vi; paul_[(size_t)vi]->start(v.buf->d.data(), v.buf->frames, v.ws, v.we, paulStretch_); }
 }
 void Sampler::noteOff(int note) {
     if (mode_ == ONESHOT) return;   // always plays out
@@ -100,7 +114,7 @@ void Sampler::render(float* out, int n) {
 void Sampler::renderVoice(Voice& v, float* out, int n) {
     const float* d = v.buf->d.data(); const int frames = v.buf->frames;
     const double srcRate = (double)v.buf->sr / sr_;
-    const double pitch = mode_ == KIT ? 1.0 : std::pow(2.0, (v.note - root_ + bend_) / 12.0);
+    const double pitch = mode_ == KIT ? std::pow(2.0, (kitSemis_ + bend_) / 12.0) : std::pow(2.0, (v.note - root_ + bend_) / 12.0);
     const double rate = srcRate * pitch;
     auto readAt = [&](double p, float& l, float& r) {
         const int i0 = std::min(frames - 2, std::max(0, (int)p)); const float f = (float)(p - i0);
@@ -115,19 +129,20 @@ void Sampler::renderVoice(Voice& v, float* out, int n) {
         if (mode_ == PAUL) {
             PaulStream& ps = *paul_[(size_t)v.paulIdx];
             ps.next(pitch, l, r);
+            if (paulWidth_ != 1.f) { const float m = 0.5f * (l + r), sd = 0.5f * (l - r) * paulWidth_; l = m + sd; r = m - sd; }
             v.pos = ps.sourcePos();
         } else if (mode_ == GRAIN) {
             v.spawn -= 1.0;
             if (v.spawn <= 0.0) {
                 for (auto& g : v.grain) if (!g.on) {
-                    g.on = true; g.age = 0; g.len = (int)(sr_ * (0.06f + 0.12f * rnd()));
+                    g.on = true; g.age = 0; g.len = (int)(sr_ * grainLen_ * (0.5f + rnd()));
                     const float k = rnd(); const double mult = k < 0.15 ? 0.5 : k < 0.3 ? 2.0 : 1.0;
                     g.inc = rate * mult * (1.0 + (rnd() - 0.5) * 0.004) * (rnd() < 0.2f ? -1.0 : 1.0);
                     const double span = std::max(1.0, v.we - v.ws - g.len * std::fabs(g.inc));
                     g.pos = g.inc > 0 ? v.ws + rnd() * span : v.we - rnd() * span;
                     break;
                 }
-                v.spawn = sr_ * 0.018 * (0.6 + 0.8 * rnd());
+                v.spawn = sr_ * (double)grainLen_ / grainN_ * (0.6 + 0.8 * rnd());
             }
             for (auto& g : v.grain) {
                 if (!g.on) continue;

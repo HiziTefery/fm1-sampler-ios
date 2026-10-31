@@ -38,6 +38,9 @@ int scaleIndex(int pc, int scale) { for (int i = 0; i < kScaleN[scale]; i++) if 
 int degreeNote(int d, int scale, int root) { const int n = kScaleN[scale], o = d >= 0 ? d / n : -((-d + n - 1) / n); return root + 12 * o + kScaleStep[scale][d - o * n]; }   // degree 0 = the root of octave 0
 float speedOf(float n) { return 0.25f * std::pow(16.f, n); }          // 0.25..4
 float micThrOf(float v) { return 0.005f * std::pow(100.f, v); }       // -46..-6 dBFS
+int grainCount(float n) { return 1 + (int)std::lround(n * 11); }               // 1..12 grains at once
+float grainSec(float n) { return 0.02f * std::pow(15.f, n); }                     // 20 ms .. 300 ms
+float paulFactor(float n) { return 2.f * std::pow(32.f, n); }                     // slow-down 2x .. 64x
 float loopSpeedOf(float n) { return 0.25f * std::pow(8.f, n); }       // 0.25..2
 float lfoHz(float n) { return 0.1f * std::pow(200.f, n); }            // 0.1..20
 }  // namespace
@@ -134,7 +137,11 @@ void SamplerApp::applyLfo(int t) {
 void SamplerApp::applyHome(int t, bool commit) {
     const TrackState& x = ts_[t];
     s_.setSampleRange(t, x.start, x.end);
-    s_.setStretch(t, speedOf(x.speed), std::round((x.pitch - 0.5f) * 48.f), commit);
+    const float semis = std::round((x.pitch - 0.5f) * 48.f);
+    if (x.algo == 3) { s_.setStretch(t, 1.f, 0.f, commit); s_.setSliceThreshold(t, x.kitThr); s_.setKitPitch(t, semis); }   // KIT: threshold instead of speed, the pitch moves every slice
+    else if (x.algo == 4) { s_.setStretch(t, 1.f, 0.f, commit); s_.setGrain(t, grainCount(x.grains), grainSec(x.grainLen)); }
+    else if (x.algo == 5) { s_.setStretch(t, 1.f, 0.f, commit); s_.setPaul(t, paulFactor(x.paulStretch), x.paulWidth * 2.f); }
+    else s_.setStretch(t, speedOf(x.speed), semis, commit);
 }
 void SamplerApp::applyArp(int t) {
     const TrackState& x = ts_[t];
@@ -155,7 +162,7 @@ void SamplerApp::applyFx() {
     s_.setDelay(0.05f + delayTime_ * 1.45f, delayFb_ * 0.95f);
 }
 void SamplerApp::queueCommit(int t) { commitAt_ = nowMs_ + 350; commitTrack_ = t; }   // the offline stretch / pitch runs once the knob rests
-void SamplerApp::setAlgo(int a) { ts_[track_].algo = ((a % 6) + 6) % 6; applyAlgo(track_); }
+void SamplerApp::setAlgo(int a) { ts_[track_].algo = ((a % 6) + 6) % 6; applyAlgo(track_); applyHome(track_, true); }
 void SamplerApp::setVolume(int t, float v) { ts_[t].vol = cl(v); applyMix(t); }
 void SamplerApp::setPan01(int t, float v) { ts_[t].pan = cl(v); applyMix(t); }
 void SamplerApp::setSend(int t, int w, float v) { (w ? ts_[t].sendD : ts_[t].sendR) = cl(v); applyMix(t); }
@@ -199,8 +206,19 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
     case P_HOME:
         k[0] = cont("START", &x.start, [](float v) { return pct(v); }, [=] { if (ts_[t].start > ts_[t].end - 0.02f) ts_[t].start = ts_[t].end - 0.02f; applyHome(t); }, 0.01f, true);
         k[1] = cont("END", &x.end, [](float v) { return pct(v); }, [=] { if (ts_[t].end < ts_[t].start + 0.02f) ts_[t].end = ts_[t].start + 0.02f; applyHome(t); }, 0.01f, true);
-        k[2] = cont("SPEED", &x.speed, [](float v) { return fmt("%.2fX", speedOf(v)); }, [=] { applyHome(t); }, 0.01f, true);
-        k[3] = cont("PITCH", &x.pitch, [](float v) { return fmt("%+.0f ST", std::round((v - 0.5f) * 48.f)); }, [=] { applyHome(t); }, 1.f / 48.f, true);
+        if (x.algo == 3) {   // KIT: the threshold the sample is cut at, the pitch of every slice
+            k[2] = cont("THRESHOLD", &x.kitThr, [](float v) { return pct(v); }, [=] { applyHome(t); }, 0.01f);
+            k[3] = cont("PITCH", &x.pitch, [](float v) { return fmt("%+.0f ST", std::round((v - 0.5f) * 48.f)); }, [=] { applyHome(t); }, 1.f / 48.f);
+        } else if (x.algo == 4) {   // GRAIN: how many grains sound together and how long each one is
+            k[2] = cont("GRAINS", &x.grains, [](float v) { return std::to_string(grainCount(v)); }, [=] { applyHome(t); }, 1.f / 11.f);
+            k[3] = cont("GRAIN SIZE", &x.grainLen, [](float v) { return fmt("%.0fMS", grainSec(v) * 1000.0); }, [=] { applyHome(t); }, 0.02f);
+        } else if (x.algo == 5) {   // PAULSTRETCH: how much slower, how wide
+            k[2] = cont("STRETCH", &x.paulStretch, [](float v) { return fmt("%.0fX", paulFactor(v)); }, [=] { applyHome(t); }, 0.02f);
+            k[3] = cont("WIDTH", &x.paulWidth, [](float v) { return pct(v * 2.f); }, [=] { applyHome(t); }, 0.02f);
+        } else {
+            k[2] = cont("SPEED", &x.speed, [](float v) { return fmt("%.2fX", speedOf(v)); }, [=] { applyHome(t); }, 0.01f, true);
+            k[3] = cont("PITCH", &x.pitch, [](float v) { return fmt("%+.0f ST", std::round((v - 0.5f) * 48.f)); }, [=] { applyHome(t); }, 1.f / 48.f, true);
+        }
         break;
     case P_FX:
         k[0] = cont("REVERB SIZE", &reverbSize_, [](float v) { return pct(v); }, [=] { applyFx(); });

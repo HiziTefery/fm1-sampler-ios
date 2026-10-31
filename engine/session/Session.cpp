@@ -38,6 +38,7 @@ struct Session::Impl {
         std::vector<Note> pending;   // notes of this block (without the arpeggiator)
         // offline stretch / pitch
         float speed = 1.f, semis = 0.f, rangeA = 0.f, rangeB = 1.f; uint32_t gen = 0;
+        float sliceThr = 0.22f, kitSemis = 0.f, grainLen = 0.12f, paulStretch = 8.f, paulWidth = 1.f; int grainN = 7; std::vector<float> slices;   // mode parameters; slices for the UI (under infoMtx)
         // the audio loop of this track
         std::vector<float> clip;     // interleaved stereo, loopSamples frames
         bool clipHas = false, clipRec = false;
@@ -171,12 +172,20 @@ struct Session::Impl {
             Track& t = *tracks[track];
             releaseAll(t);
             std::swap(t.sampler, *holder);
+            applyModeParams(t);
             { std::lock_guard<std::mutex> l(t.infoMtx); t.label = t.sampler->label(); t.peaks = t.sampler->peaks(); t.orig = t.sampler->original(); }
             (void)kit;
             bury(std::move(*holder));
             a_sampleTrack = track; a_sampleVersion++; a_sampleState = 0;
             startProcess(track);   // the stretch / pitch that was set for this track applies to the new sample too
         });
+    }
+    // audio thread: hand the mode parameters of a track to its sampler and publish the slices for the UI
+    void applyModeParams(Track& t) {
+        if (!t.sampler) return;
+        t.sampler->setSliceThreshold(t.sliceThr); t.sampler->setKitPitch(t.kitSemis); t.sampler->setGrain(t.grainN, t.grainLen); t.sampler->setPaul(t.paulStretch, t.paulWidth);
+        auto f = t.sampler->sliceFractions();
+        std::lock_guard<std::mutex> l(t.infoMtx); t.slices = std::move(f);
     }
     // audio thread: build the stretched copy of the track's range on the worker, then swap it in
     void startProcess(int ti) {
@@ -491,7 +500,17 @@ float Session::detectRoot(int t) const {
 }
 void Session::setSampleRange(int t, float a, float b) {
     if (t < 0 || t >= kTracks) return;
-    d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.rangeA = clampf(a, 0.f, 1.f); tr.rangeB = clampf(b, 0.f, 1.f); if (tr.sampler) tr.sampler->setRange(a, b); });
+    d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.rangeA = clampf(a, 0.f, 1.f); tr.rangeB = clampf(b, 0.f, 1.f); if (tr.sampler) { tr.sampler->setRange(a, b); d->applyModeParams(tr); } });
+}
+void Session::setSliceThreshold(int t, float v) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.sliceThr = clampf(v, 0.f, 1.f); d->applyModeParams(tr); }); }
+void Session::setKitPitch(int t, float s) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.kitSemis = s; d->applyModeParams(tr); }); }
+void Session::setGrain(int t, int n, float len) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.grainN = n; tr.grainLen = len; d->applyModeParams(tr); }); }
+void Session::setPaul(int t, float st, float w) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.paulStretch = st; tr.paulWidth = w; d->applyModeParams(tr); }); }
+std::vector<float> Session::sliceFractions(int t) const {
+    if (t < 0 || t >= kTracks) return {};
+    const auto& tr = *d->tracks[(size_t)t];
+    std::lock_guard<std::mutex> l(tr.infoMtx);
+    return tr.slices;
 }
 void Session::setStretch(int t, float speed, float semis, bool commit) {
     if (t < 0 || t >= kTracks) return;

@@ -167,6 +167,9 @@ int main() {
         auto sl = findSlices(hits, N * 2, 44100, 16);
         auto near = [&](int t) { for (int v : sl) if (std::abs(v - t) < 600) return true; return false; };
         CHECK(near(2000) && near(30000) && near(60000) && sl.size() <= 5, "slicer finds the three hits (%zu slices)", sl.size());
+        auto on = findOnsets(hits, N * 2, 44100);
+        auto lo = pickSlices(on, 0, N * 2, 44100, 0.0f), hi = pickSlices(on, 0, N * 2, 44100, 1.0f), win = pickSlices(on, 20000, N * 2, 44100, 0.2f);
+        CHECK(lo.size() >= hi.size() && !win.empty() && win[0] >= 20000, "threshold: %zu slices at 0, %zu at 1, window starts at %d", lo.size(), hi.size(), win.empty() ? -1 : win[0]);
         auto eq = findSlices(std::vector<float>((size_t)N * 2, 0.1f), N, 44100, 16);
         CHECK(eq.size() == 16, "no hits: %zu equal slices", eq.size());
     }

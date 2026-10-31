@@ -57,6 +57,11 @@ public:
     void setRoot(int track, float note);                                       // note at which the sample sounds as recorded (default 60)
     float detectRoot(int track) const;                                         // pitch of the track's sample as a (fractional) MIDI note, -1 if it has none
     void setSampleRange(int track, float start, float end);                    // 0..1 of the sample
+    void setSliceThreshold(int track, float thr01);                           // KIT: the threshold the slices are cut at
+    void setKitPitch(int track, float semitones);                              // KIT: transposition of every slice
+    void setGrain(int track, int count, float lengthSec);                      // GRAIN: grains sounding together and their length
+    void setPaul(int track, float stretch, float width);                       // PAUL: slow-down factor and stereo width
+    std::vector<float> sliceFractions(int track) const;                        // KIT: slice starts (0..1 of the sample) and the end of the last one
     void setStretch(int track, float speed, float semitones, bool commit);     // commit: the knob rested, (re)build the stretched copy offline
     void setLfo(int track, const Lfo& l);
     void setArp(int track, bool on, int rate /*0..11*/, int pattern /*0..4*/, int octaves /*1..4*/, float gate /*0.05..0.95*/);
