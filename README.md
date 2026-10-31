@@ -9,7 +9,11 @@ FM-1 second screen (240x240, from the host simulator `app_sim`: sample, edit, en
 
 ![FM-1 screens](shots/readme_fm1.png)
 
-Phone app (sample with voice positions and the whole-loop lane, voices, LOOP page, LENGTH page, mic recording, library):
+Phone app, main screen = a cassette deck (reels turn with the loop, eight tape tracks with their loops, faders, tape knobs):
+
+![Cassette deck](shots/readme_deck.png)
+
+Phone app, EDIT view (sample with voice positions and the whole-loop lane, voices, LOOP page, LENGTH page, mic recording, library):
 
 ![Phone app](shots/readme_phone.png)
 
@@ -61,7 +65,7 @@ At start: Tape Key on track 1, Acoustic bass on 2, Shiny on 3, TrapKit (KIT) on 
 - `engine/dsp/Reverb.h` (8 combs + 4 allpasses per side), `TapeDelay.h`, `TapeInsert.h`, `Arp.h` (UP, DOWN, UPDN, CONV, RAND over 1..4 octaves, sample accurate gate), `Wav.*`.
 - `engine/session/Session.*`: tracks, mixer, LFO (once per block, ~170 Hz: pitch, filter, volume or pan), looper, mic recorder, library listing, command queue to the audio thread, worker thread. `status()` is lock-free.
 - `engine/app/SamplerApp.*`: all behaviour: knob pages (`knobs(Page)` is the single source for FM-1 and phone), per-track state, library, looper, FM-1 screen drawing and LEDs, SysEx pacing and loss recovery.
-- `engine/ui/SamplerUI.*`: the phone UI as draw ops (left tracks, centre sample/waveform with draggable START/END, voice markers, whole-loop lane, right page tabs + 4 sliders, library sheet). `ui/UiOp.h`, `Theme.h` (paper/ink/amber, square corners).
+- `engine/ui/SamplerUI.*`: the phone UI as draw ops. Default view = cassette deck (`deck`: `cassette` with paper label = selected track / mic state / loop counter and two reels whose pack moves with the loop position, `tapeTracks` = 8 rows with name, loop waveform + playhead, level and volume fader, `tapeKnobs` = LOOP SPEED / EXCITER / LO-FI / WOBBLE, library row; the top bar has PLAY, REC, SAVE, CLEAR, MIC, FILE, EDIT). EDIT switches to the older editor (left tracks, centre sample/waveform with draggable START/END, voice markers, whole-loop lane, right page tabs + 4 sliders, library sheet). `ui/UiOp.h`, `Theme.h` (paper/ink/amber, square corners).
 - `android/`: `Backend` (FM-1 USB MIDI + USB audio routing, Oboe, 30 Hz tick), `SamplerActivity` (file picker, mic permission), `AudioImport`, `SamplerView` (replays ops), `native-lib.cpp`. Package `com.ferluht.fm1sampler`, lib `fm1sampler`.
 - `firmware/`: the FM-1 firmware (M-VAVE's open firmware with the control-surface protocol of `PROTOCOL.md`). `firmware/FM1-Sampler-Workbench.html` is the flash page; `tools/build_fw.py firmware ~/fm1/wine/drive_c/JL/pi32` rebuilds it (JieLi toolchain under wine, ~30 s). Changes in `app/ctrl.c`: SEL (BTN_SCL) forwarded to the app (no on-device scale screen), splash "SAMPLER".
 
@@ -71,3 +75,6 @@ At start: Tape Key on track 1, Acoustic bass on 2, Shiny on 3, TrapKit (KIT) on 
 
 ## Status
 Host-tested only (test_app all green, screenshots of both screens checked). **Not run on a phone or an FM-1.** Open questions: MediaCodec import on a real phone, offline stretch time on the phone CPU, Paulstretch / granular CPU on the phone, arp is free running (not locked to the loop), loop clips are not saved with a project (no project save/load).
+
+## Branches
+`main` = v0.10. `cassette-deck` = v0.11: phone screen is the cassette deck, no patterns and no punch-in effects (the FM-1 screen is unchanged). The parked patterns (LEN + keys) and punch-in effects (MIXER keys) live on `patterns-punchin`.

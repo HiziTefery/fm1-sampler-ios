@@ -58,6 +58,11 @@ void SamplerUI::frame(uint32_t now) {
     rrect({0, 0, W_, H_}, 0, BG);
     const float tb = 44, left = 176, right = 252;
     topBar({0, 0, W_, tb});
+    if (!editor_) {   // the cassette deck; the old sample / page editor stays one tap away (EDIT)
+        deck({MARGIN, tb + MARGIN, W_ - 2 * MARGIN, H_ - tb - 2 * MARGIN});
+        if (sheetOpen_) librarySheet();
+        return;
+    }
     trackList({MARGIN, tb + MARGIN, left - MARGIN, H_ - tb - 2 * MARGIN});
     sampleArea({left + MARGIN, tb + MARGIN, W_ - left - right - 2 * MARGIN, H_ - tb - 2 * MARGIN});
     pagePanel({W_ - right, tb + MARGIN, right - MARGIN, H_ - tb - 2 * MARGIN});
@@ -77,26 +82,186 @@ void SamplerUI::topBar(Rect r) {
     tap(pl, [this] { app_.transportPlay(); });
     x += 52;
     // REC: arms the first take on a clean looper, overdub afterwards
-    Rect rc{x, 6, 74, r.h - 12};
+    Rect rc{x, 6, 86, r.h - 12};
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
     rrect(rc, R_CONTROL, recOn ? ACCENT : RAISED);
     if (armed) stroke(rc, R_CONTROL, ACCENT, 2);
     circle(rc.x + 18, cy, 6, recOn ? ON_ACCENT : ACCENT);
     text(rc.x + 28, cy, 9.5f, recOn ? ON_ACCENT : TEXT, app_.loopExists() ? "OVERDUB" : "REC", 0, true);
     tap(rc, [this] { app_.loopRecord(); });
-    x += 82;
+    x += 94;
     button({x, 6, 56, r.h - 12}, "SAVE", false, [this] { app_.loopSave(); }, 11);
     x += 62;
     button({x, 6, 56, r.h - 12}, "CLEAR", false, [this] { app_.loopClear(); }, 11);
-    x += 70;
+    x += 62;
+    {   // microphone take and disk import (the deck has no other place for them)
+        static const char* micLab[] = {"MIC", "WAIT", "STOP", "SAVING"};
+        const int ms = app_.micState();
+        button({x, 6, 56, r.h - 12}, micLab[ms], ms == 2, [this] { app_.micSample(); }, 11, ms != 0);
+        x += 62;
+        button({x, 6, 56, r.h - 12}, "FILE", false, [this] { app_.requestFile(); }, 11);
+        x += 62;
+        button({x, 6, 56, r.h - 12}, "EDIT", editor_, [this] { editor_ = !editor_; }, 11);
+        x += 70;
+    }
     text(x, cy - 6, 12, st_.freeRecording || recOn || armed ? ACCENT : TEXT, app_.loopText(), 0, true);
     text(x, cy + 11, 9.5f, DIM, std::string("LOOP SOURCE: ") + (app_.knobs(SamplerApp::P_SAVE)[1].value), 0, false);
-    tap({x - 4, 0, 230, r.h}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
+    tap({x - 4, 0, 200, r.h}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
     // link state and load
     const uint32_t lc = linkMidi_ && linkAudio_ ? TEXT : linkMidi_ ? ACCENT : DIM;
     circle(W_ - 22, cy, 5, lc);
     text(W_ - 34, cy - 6, 10, DIM, linkMidi_ ? "FM-1" : "NO FM-1", 2, true);
     text(W_ - 34, cy + 9, 9, DIM, "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, false);
+}
+
+// ---- cassette deck ----
+namespace {
+constexpr float kPi = 3.14159265f;
+}
+
+// One reel: tape pack (radius r), hub with six teeth turned by `ang`.
+void SamplerUI::reel(float cx, float cy, float r, float ang) {
+    circle(cx, cy, r, OUTLINE);
+    circle(cx, cy, 13, SURFACE);
+    for (int k = 0; k < 6; k++) {
+        const float a = ang + k * kPi / 3;
+        line(cx + 5 * std::cos(a), cy + 5 * std::sin(a), cx + 12 * std::cos(a), cy + 12 * std::sin(a), TEXT, 3);
+    }
+    stroke({cx - 13, cy - 13, 26, 26}, 13, TEXT, 1.5f);
+    circle(cx, cy, 3, BG);
+}
+
+void SamplerUI::cassette(Rect c) {
+    const int t = app_.track();
+    const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
+    const bool recNow = st_.freeRecording || st_.track_clip_rec[t];
+    const int mic = app_.micState();
+    rrect(c, 9, RAISED); stroke(c, 9, recNow ? ACCENT : OUTLINE, recNow ? 2 : 1.5f);
+    for (int i = 0; i < 4; i++) circle(c.x + (i & 1 ? c.w - 11 : 11), c.y + (i & 2 ? c.h - 11 : 11), 3, OUTLINE);
+    // paper label: a stripe in the accent colour, the track, the sample, the counter
+    const uint32_t paper = light ? BG : TEXT, ink = ON_ACCENT;
+    Rect lb{c.x + 20, c.y + 14, c.w - 40, c.h * 0.36f};
+    rrect(lb, 3, paper); if (light) stroke(lb, 3, OUTLINE, 1);
+    rrect({lb.x, lb.y, lb.w, 7}, 0, ACCENT);
+    std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "   " + SamplerApp::algoName(app_.algo());
+    if (title.empty()) title = "EMPTY TRACK";
+    if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE   " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
+    else if (mic == 2) { title = "RECORDING " + std::to_string(st_.sampleSeconds).substr(0, 4) + " S"; sub = "MICROPHONE"; }
+    else if (mic == 3) title = "SAVING";
+    const std::string ts = app_.toast();
+    if (!ts.empty()) sub = ts;
+    text(lb.x + 10, lb.y + 22, 8.5f, ink, fit(sub, lb.w - 20, 8.5f), 0, true);
+    text(lb.x + 10, lb.y + 40, 17, ink, fit(title, lb.w - 20, 17), 0, true);
+    float lsec = 0, psec = 0, lp = 0;
+    if (hasLoop) {
+        lsec = (float)(st_.loopSamples / app_.session().sampleRate());
+        lp = st_.track_has_clip[t] ? st_.clipPos[t] : (float)(st_.pos / st_.loopSamples);
+        psec = lp * lsec;
+    } else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
+    char cnt[48]; snprintf(cnt, sizeof cnt, "%d:%04.1f / %d:%04.1f", (int)psec / 60, std::fmod(psec, 60.f), (int)lsec / 60, std::fmod(lsec, 60.f));
+    for (int i = 0; i < 2; i++) line(lb.x + 10, lb.y + lb.h - 20 + i * 9, lb.x + lb.w - 10, lb.y + lb.h - 20 + i * 9, OUTLINE, 1);
+    text(lb.x + lb.w - 10, lb.y + lb.h - 28, 10, ink, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
+    if (recNow || st_.freeArmed) { if ((now_ / 400) % 2 == 0 || recNow) circle(lb.x + 14, lb.y + lb.h - 28, 5, ACCENT); text(lb.x + 24, lb.y + lb.h - 28, 9.5f, ink, st_.freeArmed && !recNow ? "ARMED" : "REC", 0, true); }
+    tap(lb, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+    // window with the two reels: the pack moves from supply to take-up as the loop plays
+    Rect wd{c.x + c.w * 0.1f, lb.y + lb.h + 10, c.w * 0.8f, c.h - (lb.h + 14) - 10 - 42};
+    rrect(wd, 10, BG); stroke(wd, 10, OUTLINE, 1);
+    const float cy = wd.y + wd.h / 2, rmax = wd.h / 2 - 3, rmin = 15;
+    float p = hasLoop ? lp : std::min(1.f, st_.freeSeconds / 60.f), ang = hasLoop ? -lp * 2 * kPi * 6 : st_.freeRecording ? -(float)now_ * 0.004f : 0.f;
+    if (!hasLoop && !st_.freeRecording) p = 0.5f;
+    const float rl = rmin + (rmax - rmin) * (1 - p), rr = rmin + (rmax - rmin) * p;
+    const float lx = wd.x + wd.w * 0.27f, rx = wd.x + wd.w * 0.73f;
+    clip(wd);
+    reel(lx, cy, rl, ang); reel(rx, cy, rr, ang);
+    endClip();
+    // tape path and head plate
+    Rect pl{c.x + c.w * 0.2f, c.y + c.h - 36, c.w * 0.6f, 26};
+    rrect(pl, 6, SURFACE); stroke(pl, 6, OUTLINE, 1);
+    const float ry = pl.y + 8;
+    line(lx, cy + rl, pl.x + 16, ry, OUTLINE, 2); line(rx, cy + rr, pl.x + pl.w - 16, ry, OUTLINE, 2);
+    line(pl.x + 16, ry, pl.x + pl.w - 16, ry, hasLoop && st_.playing ? ACCENT : DIM, 2);
+    circle(pl.x + 16, ry, 4, TEXT); circle(pl.x + pl.w - 16, ry, 4, TEXT);
+    circle(pl.x + pl.w / 2 - 14, pl.y + 17, 2.5f, OUTLINE); circle(pl.x + pl.w / 2 + 14, pl.y + 17, 2.5f, OUTLINE);
+}
+
+// Eight tape tracks: name, the loop with its playhead, level and volume fader.
+void SamplerUI::tapeTracks(Rect r) {
+    const float rh = (r.h - 7 * 4) / 8;
+    float pk[8][Session::kLoopBins]; int n[8]; float mx = 0.08f;
+    for (int i = 0; i < 8; i++) { n[i] = app_.session().loopPeaks(i, pk[i], Session::kLoopBins); for (int j = 0; j < n[i]; j++) mx = std::max(mx, pk[i][j]); }
+    for (int i = 0; i < SamplerApp::kTracks; i++) {
+        Rect row{r.x, r.y + i * (rh + 4), r.w, rh};
+        const bool sel = i == app_.track();
+        rrect(row, R_CARD, sel ? RAISED : SURFACE);
+        stroke(row, R_CARD, sel ? ACCENT : OUTLINE, sel ? 2 : 1);
+        tap(row, [this, i] { app_.selectTrack(i); });
+        text(row.x + 15, row.y + rh / 2, T_TITLE, sel ? ACCENT : TEXT, std::to_string(i + 1), 1, true);
+        const std::string lab = app_.sampleLabel(i);
+        text(row.x + 32, row.y + rh / 2 - 6, 10.5f, lab.empty() ? DIM : TEXT, fit(lab.empty() ? "EMPTY" : lab, 84, 10.5f), 0, true);
+        text(row.x + 32, row.y + rh / 2 + 8, 8.5f, DIM, SamplerApp::algoName(app_.state(i).algo), 0, false);
+        // the loop
+        Rect ln{row.x + 124, row.y + 5, row.w - 124 - 122, rh - 10};
+        rrect(ln, 0, BG); stroke(ln, 0, OUTLINE, 1);
+        const float lcy = ln.y + ln.h / 2, lh = ln.h / 2 - 2;
+        const bool rec = st_.track_clip_rec[i];
+        if (n[i] > 0) {
+            const int cols = std::max(1, (int)((ln.w - 4) / 2)), per = std::max(1, n[i] / cols);
+            const float bw = (ln.w - 4) / ((n[i] + per - 1) / per);
+            for (int a = 0; a * per < n[i]; a++) {
+                float v = 0; for (int j = a * per; j < std::min(n[i], (a + 1) * per); j++) v = std::max(v, pk[i][j]);
+                v = std::min(1.f, v / mx);
+                if (v > 0.01f) rrect({ln.x + 2 + a * bw, lcy - v * lh, std::max(1.f, bw - 0.5f), std::max(1.f, 2 * v * lh)}, 0, rec ? ACCENT : TEXT);
+            }
+        } else line(ln.x + 2, lcy, ln.x + ln.w - 2, lcy, OUTLINE, 1);
+        if (st_.track_has_clip[i] || rec) rrect({ln.x + 2 + st_.clipPos[i] * (ln.w - 4), ln.y, 2, ln.h}, 0, ACCENT);
+        // level and volume
+        Rect fd{row.x + row.w - 112, row.y + rh / 2 - 13, 100, 26};
+        const float lv = std::min(1.f, st_.track_peak[i] * 1.5f), v = clamp01(app_.state(i).vol);
+        rrect({fd.x, fd.y, fd.w, 4}, 0, OUTLINE); rrect({fd.x, fd.y, std::max(1.f, fd.w * lv), 4}, 0, TEXT);
+        line(fd.x, fd.y + 18, fd.x + fd.w, fd.y + 18, OUTLINE, 2);
+        line(fd.x, fd.y + 18, fd.x + 4 + v * (fd.w - 8), fd.y + 18, DIM, 2);
+        rrect({fd.x + v * (fd.w - 8), fd.y + 10, 8, 16}, 1, sel ? ACCENT : TEXT);
+        auto setv = [this, i, fd](float x, float) { app_.selectTrack(i); app_.setVolume(i, clamp01((x - fd.x - 4) / (fd.w - 8))); };
+        hit({fd.x - 8, row.y, fd.w + 16, row.h}, setv, setv);
+    }
+}
+
+// The tape machine's own knobs (LOOP SPEED, EXCITER, LO-FI, WOBBLE), two by two.
+void SamplerUI::tapeKnobs(Rect r) {
+    auto k = app_.knobs(SamplerApp::P_SEQ);
+    const float cw = (r.w - 10) / 2, rh = r.h / 2;
+    for (int i = 0; i < 4; i++) {
+        const auto& p = k[(size_t)i];
+        if (!p.valid) continue;
+        Rect cell{r.x + (i % 2) * (cw + 10), r.y + (i / 2) * rh, cw, rh - 4};
+        text(cell.x, cell.y + 7, T_CAPTION, DIM, p.name, 0, true);
+        text(cell.x + cell.w, cell.y + 7, 11, p.isChoice ? ACCENT : TEXT, p.value, 2, true);
+        Rect s{cell.x, cell.y + 17, cell.w, 13};
+        rrect(s, 0, SURFACE); stroke(s, 0, OUTLINE, 1);
+        rrect({s.x, s.y, std::max(2.f, s.w * clamp01(p.norm)), s.h}, 0, TEXT);
+        auto set = [this, i, s](float x, float) { app_.knobs(SamplerApp::P_SEQ)[(size_t)i].set(clamp01((x - s.x) / s.w)); };
+        hit({s.x, cell.y + 8, s.w, cell.h - 8}, set, set);
+    }
+}
+
+void SamplerUI::deck(Rect r) {
+    const float cw = std::min(360.f, r.w * 0.4f), ch = std::min(cw * 0.63f, r.h - 100);
+    cassette({r.x, r.y, cw, ch});
+    // library row
+    Rect lr{r.x, r.y + ch + 6, cw, 30};
+    const auto& lib = app_.library(); const int cur = app_.libraryCursor();
+    button({lr.x, lr.y, 30, lr.h}, "<", false, [this] { app_.browse(-1); }, 15);
+    button({lr.x + lr.w - 30, lr.y, 30, lr.h}, ">", false, [this] { app_.browse(1); }, 15);
+    Rect nm{lr.x + 34, lr.y, lr.w - 68, lr.h};
+    rrect(nm, R_CARD, SURFACE); stroke(nm, R_CARD, OUTLINE, 1);
+    if (!lib.empty()) {
+        text(nm.x + 8, nm.y + nm.h / 2 - 5, 11, TEXT, fit(lib[(size_t)cur].label, nm.w - 16, 11), 0, true);
+        text(nm.x + 8, nm.y + nm.h / 2 + 8, 8.5f, DIM, lib[(size_t)cur].group + "  " + std::to_string(cur + 1) + "/" + std::to_string(lib.size()), 0, false);
+    }
+    tap(nm, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+    const float ky = lr.y + lr.h + 8;
+    tapeKnobs({r.x, ky, cw, r.y + r.h - ky});
+    tapeTracks({r.x + cw + MARGIN, r.y, r.w - cw - MARGIN, r.h});
 }
 
 void SamplerUI::trackList(Rect r) {

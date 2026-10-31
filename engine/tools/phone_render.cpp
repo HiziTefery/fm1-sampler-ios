@@ -38,6 +38,9 @@ int main(int argc, char** argv) {
     };
     const float rx = W - 252, tw = (252 - 8 - 16) / 5.f;
     auto tab = [&](int i) { tapAt(rx + (i % 5) * (tw + 4) + tw / 2, 44 + 8 + (i / 5) * 32 + 14); };
+    ui.frame(now); dump("deck");
+    app.selectTrack(1); run(0.3); ui.frame(now); dump("deck_track2"); app.selectTrack(0);
+    ui.setEditor(true);
     ui.frame(now); dump("sample");
     tab(1); ui.frame(now); dump("fx");
     tab(2); ui.frame(now); dump("env");
@@ -52,7 +55,9 @@ int main(int argc, char** argv) {
     app.micSample(); in.assign(512, 0.01f); run(0.4); ui.frame(now); dump("mic_wait");
     { double ph = 0; for (long i = 0; i < 3 * sr / 256; i++) { for (int k = 0; k < 256; k++) { double env = 0.15 + 0.6 * std::fabs(std::sin(i * 256.0 / sr * 2.2)); float v = (float)(env * std::sin(ph)); ph += 0.05; in[2 * k] = in[2 * k + 1] = v; } std::fill(buf.begin(), buf.end(), 0.f); s.process(buf.data(), in.data(), 256); std::this_thread::sleep_for(std::chrono::microseconds(200)); if (i % 5 == 0) { now += 33; app.tick(now); } } }
     ui.frame(now); dump("mic_rec");
+    ui.setEditor(false); ui.frame(now); dump("deck_mic"); ui.setEditor(true);
     app.micSample(); in.assign(512, 0.f); run(2.0); app.tick(now + 100);
+    ui.setEditor(false); ui.frame(now); dump("deck_loaded"); ui.setEditor(true);
     tapAt(176 + 8 + 100, 44 + 8 + 66 + 142 + 6 + 10 + 12 + 17); ui.frame(now); dump("library");
     fprintf(f, "]}\n"); fclose(f);
     return 0;
