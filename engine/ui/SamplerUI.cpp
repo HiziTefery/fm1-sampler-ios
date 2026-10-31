@@ -162,7 +162,7 @@ void SamplerUI::knob(float cx, float cy, SamplerApp::Page page, int idx, bool se
     circle(cx - 2, cy - 3, R - 5, kShellHi);
     const float a = (-135.f + n * 270.f) * kPi / 180;
     line(cx + std::sin(a) * 4, cy - std::cos(a) * 4, cx + std::sin(a) * (R - 2), cy - std::cos(a) * (R - 2), kAmber, 2.5f);
-    text(cx, cy + R + 16, 8.5f, kMetal, fit(p.name, 70, 8.5f), 1, true);
+    text(cx, cy + R + 16, 8.5f, kMetal, fit(p.name, 100, 8.5f), 1, true);
     text(cx, cy + R + 27, 9.5f, kPaper, p.value, 1, true);
     Rect hr{cx - 30, cy - R - 10, 60, 2 * R + 40};
     hit(hr, [this, n](float, float y) { dragY_ = y; dragV_ = n; },
@@ -302,20 +302,24 @@ void SamplerUI::deck(Rect r) {
     text(W_ - 34, 18, 9.5f, kMetal, std::string(linkMidi_ ? "FM-1  " : "NO FM-1  ") + "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, true);
     // centre: the cassette, VU needles and knobs on both sides
     const float top = 34, ch = 214, cw = std::min(ch * 1.6f, W_ * 0.42f);
-    const float cx = W_ / 2, cxl = cx - cw / 2, zl = 24, zr = W_ - 24;
+    const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
-    // VU: master (left) and the selected track (right)
+    // right side: the VU needles (master, selected track), the selected page and its four knobs in a line
     auto smooth = [](float& vu, float peak) { const float db = peak > 1e-4f ? 20 * std::log10(peak) : -80.f; const float t = clamp01((db + 38.f) / 41.f); vu += (t - vu) * (t > vu ? 0.55f : 0.14f); return vu; };
     const float vl = smooth(vu_[0], st_.master_peak), vr = smooth(vu_[1], st_.track_peak[app_.track()]);
-    const float vw = std::min(190.f, cxl - zl - 14), vh = 72;
-    const float lcx = zl + (cxl - zl) / 2, rcx = cxl + cw + (zr - cxl - cw) / 2;
-    vu({lcx - vw / 2, top + 4, vw, vh}, vl, "MASTER");
-    vu({rcx - vw / 2, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
-    const float ky = top + vh + 29, kdx = std::min(56.f, vw / 2);
-    for (int i = 0; i < 4; i++) {
-        knob(lcx + (i % 2 ? kdx / 2 + 8 : -kdx / 2 - 8), ky + (i / 2) * 70, SamplerApp::P_SEQ, i);
-        knob(rcx + (i % 2 ? kdx / 2 + 8 : -kdx / 2 - 8), ky + (i / 2) * 70, SamplerApp::P_MIX, i);
+    const float vw = (w0 - 14) / 2, vh = 72;
+    vu({x0, top + 4, vw, vh}, vl, "MASTER");
+    vu({x0 + vw + 14, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
+    const float py = top + vh + 28;
+    text(x0, py, 9, kMetal, "PAGE", 0, true);
+    text(x0 + 36, py, 15, kAmber, SamplerApp::pageName(app_.page()), 0, true);
+    for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
+        Rect nr{zr - (10 - i) * 22.f, py - 11, 22, 22};
+        rrect({nr.x + 3, py - 3, 16, 6}, 1, kTabs[i] == app_.page() ? kAmber : kPanelHi);
+        tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
+    const float ky = py + 52;
+    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, ky, app_.page(), i);
     // the loops
     tapeStrip({24, top + ch + 16, W_ - 48, 84});
     // transport keys
