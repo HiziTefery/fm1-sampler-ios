@@ -9,11 +9,15 @@ FM-1 second screen (240x240, from the host simulator `app_sim`: sample, edit, en
 
 ![FM-1 screens](shots/readme_fm1.png)
 
-Phone app, main screen = a full-screen tape deck (smoked cassette with reels that turn with the loop, VU needles, knobs, the eight loops as OP-1 style tape strips under a fixed head, transport keys):
+Phone app, main screen = the tape deck (frameless, black / white / orange): the cassette with a tape loop, PLAY / STOP / REC / CLEAR under it, the sample of the selected track with its mode and sounding voices, the four knobs of the current page, one timeline of the selected track:
 
 ![Cassette deck](shots/readme_deck.png)
 
-Phone app, EDIT view (sample with voice positions and the whole-loop lane, voices, LOOP page, LENGTH page, mic recording, library):
+The same screen while the first loop is recorded (its waveform grows on the timeline) and while a microphone take waits for sound (level, trigger lines, STOP / CANCEL):
+
+![First take](shots/readme_firstrec.png) ![Microphone](shots/readme_mic.png)
+
+Phone app, EDIT view (the older editor: sample with voice positions and the whole-loop lane, voices, LOOP page, LENGTH page, mic recording, library):
 
 ![Phone app](shots/readme_phone.png)
 
@@ -35,8 +39,8 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 | SEQ ("TAPE") | LOOP SPEED (0.25..2x tape-style varispeed of the loop, GLOBAL for all tracks), EXCITER (cassette saturation), LO-FI (bit crush + hiss + dark tone), WOBBLE |
 | EDIT | mixer of the selected track: VOLUME, PAN, REVERB SEND, DELAY SEND |
 | GLO | key and scale: SCALE, ROOT, OCTAVE, MODE (KEY/CHORD). Drives the firmware's key mapping (SysEx 06) |
-| SAVE | page LOOP. Tap = save the loop of the selected track into the library, hold 0.7 s = clear ALL loops (every track), also the phone CLEAR button. Knobs: MIC SAMPLE, LOOP SOURCE, SAVE LOOP, MIC THRESHOLD (-46..-6 dB, level that starts a mic take; used by mic sampling and mic loop source) |
-| PLAY | play / stop. While recording the first press only ends the recording (the loop plays on), the next one stops the tape. Start and stop are tape-like: the loops run up from standstill (0.45 s) and slow down to it (0.7 s) |
+| SAVE | page LOOP only (saving and clearing loops is on the phone: the PROJECT menu code is kept but muted, CLEAR is a key of the deck). Knobs: MIC SAMPLE, LOOP SOURCE, (K3 empty), MIC THRESHOLD (-46..-6 dB, level that starts a mic take; used by mic sampling and mic loop source) |
+| PLAY | play / stop (a toggle; the phone has separate PLAY and STOP keys). While recording the first press only ends the recording (the loop plays on), the next one stops the tape. Start and stop are tape-like: the loops run up from standstill (0.45 s) and slow down to it (0.7 s) |
 | REC | clean looper: arms the first take (it starts with the first key or sound and sets the loop length and tempo; REC again ends it). Loop exists: toggles overdub on the selected track |
 | SEL (the button after FX; index 3, the protocol and the firmware call it SCL) | page LENGTH: K1 LENGTH (turn up = loop x2 with its content repeated, down = /2), K2 DUPLICATE, K3 HALVE, K4 bars/bpm (read-only). Needs the firmware built here (`firmware/FM1-Sampler-Workbench.html`): it forwards SCL as button 3 and has no scale screen; the stock/fm1-daw firmware keeps SCL local |
 | OCT -/+ | handled by the firmware (octave) |
@@ -46,16 +50,29 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 - Every sample is loudness-normalised on load (`Sampler::load`): the RMS of the part that sounds (20 ms blocks within 30 dB of the loudest) goes to 0.25 (gain capped at +10 dB of peak), a soft limiter (knee 0.6, ceiling 0.98) keeps the peaks, so sparse material such as drums is as loud as sustained sounds.
 - Auto-tune (tuning fork pictogram in the sample view, MELODIC and ONE-SHOT only): `dsp/Pitch.h` (YIN on the loudest window of the first 1.5 s) finds the pitch, the track's root note becomes that pitch (`Sampler::setRoot`), so the keys sound the right notes; tap again to reset. A new sample resets it. The phone CLEAR key clears the loop of the selected track.
 
+## Phone screen (the deck)
+Laid out for 400 units of height on one grid (margin 14; the header text line y = 20; knob values and transport labels y = 205). No header bar, no frames.
+- **Cassette** (top left): paper label with the track number (orange, tap = next track), the sample name (tap = library, arrows browse), the loop counter; below it a tape LOOP: one closed ribbon over a big and a small wheel and one roller inside the loop that pushes it out (built from common tangents + arcs), it runs once round per loop, the orange dot is the splice = loop start. Without a loop it stands still.
+- **Transport** under the cassette: PLAY, STOP, REC (OVERDUB when a loop exists), CLEAR (clears the loop of the selected track). While recording PLAY / STOP only ends the recording (the loop plays on), the next press stops the tape. Start and stop are tape-like (run-up 0.45 s, slow-down 0.7 s, level follows the speed).
+- **Sample view** (top right): the waveform of the track's sample with the playback window bright, the playback mode on top (tap = next mode), one orange line per sounding voice (constant brightness, its height follows the voice envelope, so it shrinks as the sample dies away), pictograms for auto-tune (tuning fork, MELODIC / ONE-SHOT only), microphone, file from disk, library. While a microphone take waits for sound the view shows the input level and two trigger lines (drag up / down to set the level) and one STOP / CANCEL button; while it records, the growing take (normalised).
+- **Page** (middle right): the name of the current page (orange) and ten notches (tap one = that page, like the FM-1 buttons); under them the four knobs of the page (drag up / down), the same parameters as K1..K4 on the FM-1.
+- **Timeline** (bottom): ruler with bars and seconds, the waveform of the selected track's loop, the playhead. Drag = tape scrub (`Session::scrubBegin / scrubMove / scrubEnd`): the tape follows the finger with a smoothed speed (up to 6x, forward and backward, the pitch follows like a hand on a reel, no clicks); when the finger lifts the tape returns to the transport speed or stops where it is. The first take of a clean looper is drawn here while it is recorded.
+- Pictogram in the bottom right corner = switch to the EDIT view. The PROJECT menu (`projectSheet`: save loop, clear loop, clear all (tap twice), loop x2 / /2, loop source) is kept in the code but nothing opens it for now.
+
+## FM-1 LEDs
+The active page button is lit. The firmware may light or clear a button LED by itself when it is pressed, so the LED frame (SysEx 01) is resent after every button event and every 400 ms.
+
 ## Sample sources
 - **Bundled library** (`samples/`, packed into the APK assets, copied to `files/samples` once): Bass, Drums (loaded as KIT), Keys, Pads.
-- **Microphone**: phone button "RECORD FROM MIC" or LOOP page K1. Waits for sound above the trigger level, trims and normalises, saves `sample_<ms>.wav` in the data dir, loads it on the track it was started on.
-- **Disk**: phone button "LOAD FILE FROM DISK" -> system picker -> `AudioImport.java` converts to a 16-bit WAV (`sample_<name>.wav` in `files/`): WAV 8/16/24/32/float directly, anything else through MediaCodec (mp3, aac, ogg, flac). Max 90 s.
+- **Microphone**: the microphone pictogram of the phone sample view or LOOP page K1. Waits for sound above the trigger level, trims and normalises, saves `sample_<ms>.wav` in the data dir, loads it on the track it was started on.
+- **Disk**: the folder pictogram of the sample view -> system picker -> `AudioImport.java` converts to a 16-bit WAV (`sample_<name>.wav` in `files/`): WAV 8/16/24/32/float directly, anything else through MediaCodec (mp3, aac, ogg, flac). Max 90 s.
 - **Saved loops** and the two above all live in the "User" group of the library (`sample_*.wav` in the data dir).
 Browsing replaces the sample of the selected track; a new sampler keeps the track's settings (`applyAll` after `sampleVersion` bumps).
+Default envelope release 2.0 s. At start every track with a sample gets its settings applied (several samples can land between two ticks).
 At start: Tape Key on track 1, Acoustic bass on 2, Shiny on 3, TrapKit (KIT) on 4.
 
 ## Looper details
-- Loop source (LOOP page K2, or the label in the phone top bar): SOUND = what the track plays (keys, arp, sample, filter, before the cassette) or MIC. Default SOUND.
+- Loop source (LOOP page K2; on the phone the PROJECT menu, muted for now): SOUND = what the track plays (keys, arp, sample, filter, before the cassette) or MIC. Default SOUND.
 - One clip per track; all tracks share the loop length of the first take. All loops are read (and recorded) through ONE tape pointer (`Session::tapePos`), so LOOP SPEED moves them together. At 1.0x the pointer is locked to the transport.
 - Recording into the loop works at any speed like a tape head: below 1x the input is spread over the two neighbouring cells weighted by the speed, above 1x the skipped cells are filled by interpolating the input.
 - A free take records audio only (no notes), so nothing in the loop runs at a speed of its own.
@@ -69,8 +86,8 @@ At start: Tape Key on track 1, Acoustic bass on 2, Shiny on 3, TrapKit (KIT) on 
 - `engine/dsp/Reverb.h` (8 combs + 4 allpasses per side), `TapeDelay.h`, `TapeInsert.h`, `Arp.h` (UP, DOWN, UPDN, CONV, RAND over 1..4 octaves, sample accurate gate), `Wav.*`.
 - `engine/session/Session.*`: tracks, mixer, LFO (once per block, ~170 Hz: pitch, filter, volume or pan), looper, mic recorder, library listing, command queue to the audio thread, worker thread. `status()` is lock-free.
 - `engine/app/SamplerApp.*`: all behaviour: knob pages (`knobs(Page)` is the single source for FM-1 and phone), per-track state, library, looper, FM-1 screen drawing and LEDs, SysEx pacing and loss recovery.
-- `engine/ui/SamplerUI.*`: the phone UI as draw ops. Default view = full-screen tape deck (`deck`: `cassette` (a tape LOOP: one closed ribbon over a big and a small wheel and one roller inside the loop that pushes it out (common tangents + arcs), runs once round per loop, splice = loop start), `sampleView` (waveform with its window, playback mode (tap = next), a line per sounding voice), `knob` x4 (the four knobs of the selected page), `timeline` = one timeline of the selected track (bars + seconds ruler, waveform, playhead, drag = tape scrub: `Session::scrubBegin/Move/End`, the tape follows the finger with a smoothed speed (forward and backward, the pitch follows like a hand on a reel, no clicks), then returns to the transport speed or stops); the track number is in orange on the cassette label (tap = next track), `key` transport row PLAY, REC, SAVE, CLEAR, MIC, FILE, LIBRARY, EDIT; frameless minimal look: black, white and orange only (the dark theme uses the same), no cards or outlines). EDIT switches to the older editor (left tracks, centre sample/waveform with draggable START/END, voice markers, whole-loop lane, right page tabs + 4 sliders, library sheet). `ui/UiOp.h`, `Theme.h` (paper/ink/amber, square corners).
-- `android/`: `Backend` (FM-1 USB MIDI + USB audio routing, Oboe, 30 Hz tick), `SamplerActivity` (file picker, mic permission), `AudioImport`, `SamplerView` (replays ops), `native-lib.cpp`. Package `com.ferluht.fm1sampler`, lib `fm1sampler`.
+- `engine/ui/SamplerUI.*`: the phone UI as draw ops (`UiOp.h`; `Theme.h` is the dark / light theme of the EDIT view, the deck has its own black / white / orange constants). Default view = `deck` (see "Phone screen"); EDIT switches to the older editor (left track list, centre sample / waveform with draggable START / END, voice markers, whole-loop lane, right page tabs + 4 sliders, library sheet; the sliders pictogram in the bottom right corner of the deck opens it, the DECK button returns).
+- `android/`: `Backend` (FM-1 USB MIDI + USB audio routing, Oboe, 30 Hz tick), `SamplerActivity` (full screen with sticky immersive bars, file picker, mic permission, `files/crash.log` for Java crashes), `AudioImport`, `SamplerView` (replays ops), `native-lib.cpp`. Package `com.ferluht.fm1sampler`, lib `fm1sampler`.
 - `firmware/`: the FM-1 firmware (M-VAVE's open firmware with the control-surface protocol of `PROTOCOL.md`). `firmware/FM1-Sampler-Workbench.html` is the flash page; `tools/build_fw.py firmware ~/fm1/wine/drive_c/JL/pi32` rebuilds it (JieLi toolchain under wine, ~30 s). Changes in `app/ctrl.c`: SEL (BTN_SCL) forwarded to the app (no on-device scale screen), splash "SAMPLER".
 
 ## Build and test
@@ -78,7 +95,9 @@ At start: Tape Key on track 1, Acoustic bass on 2, Shiny on 3, TrapKit (KIT) on 
 - Android: `cd android && ANDROID_HOME=~/android-sdk ~/gradle/gradle-8.9/bin/gradle assembleDebug -q` (~4 min first, never edit engine sources while it compiles: clang then reports "source file is not valid UTF-8"). Output `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Status
-Host-tested only (test_app all green, screenshots of both screens checked). **Not run on a phone or an FM-1.** Open questions: MediaCodec import on a real phone, offline stretch time on the phone CPU, Paulstretch / granular CPU on the phone, arp is free running (not locked to the loop), loop clips are not saved with a project (no project save/load).
+Host-tested only (test_app all green, screenshots of both screens checked). **Not run on a phone or an FM-1** since the deck redesign. Things to check on the device: the USB plug crash fix (cause was not seen in a log: the audio stream restart was moved off Oboe's thread, the FM-1 MIDI port is opened once, MIDI parsing handles running status / real-time bytes; a Java crash lands in `files/crash.log`), the page LEDs of the FM-1 (resent every 400 ms), tape scrub feel (follow time 70 ms, speed limit 6x), tape start / stop times, the loudness of drums after the RMS normalisation, auto-tune on real samples. Open questions: MediaCodec import on a real phone, offline stretch time on the phone CPU, Paulstretch / granular CPU on the phone, arp is free running (not locked to the loop), loop clips are not saved with a project (no project save/load).
 
 ## Branches
-`main` = v0.10. `cassette-deck` = v0.11: phone screen is the cassette deck, no patterns and no punch-in effects (the FM-1 screen is unchanged). The parked patterns (LEN + keys) and punch-in effects (MIXER keys) live on `patterns-punchin`.
+- `main` = v0.10.
+- `cassette-deck` = v0.11 .. v0.29 (this README): the phone screen is the tape deck; no patterns and no punch-in effects; the FM-1 screen is unchanged.
+- `patterns-punchin`: the parked patterns (LEN + keys 1..8) and punch-in effects (MIXER keys), host-tested.
