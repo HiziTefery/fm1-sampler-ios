@@ -67,6 +67,8 @@ public:
     void loopRecord();                            // REC: arm / end the first take, or toggle overdub once a loop exists
     void lenAction(bool dbl);
     void seek(float fraction) { s_.seek(fraction); }   // phone timeline: scrub the playhead
+    void autoTune();                              // MELODIC / ONE-SHOT: detect the pitch of the sample and tune the keys to it (again: reset)
+    bool tuned(int t) const { return ts_[t].tuned; }
     void loopSave();
     void loopClear();                             // every loop of every track (phone PROJECT menu)
     void loopClearTrack();                        // the loop of the selected track
@@ -89,6 +91,7 @@ public:
         
         float vol = 0.8f, pan = 0.5f, sendR = 0.5f, sendD = 0.2f;
         int entry = -1;
+        float root = 60.f; bool tuned = false;   // auto-tune: the detected pitch of the sample
     };
     const TrackState& state(int t) const { return ts_[t]; }
     void setVolume(int t, float v); void setPan01(int t, float v); void setSend(int t, int which, float v);
@@ -121,7 +124,7 @@ private:
     void encoder(int i, int delta);
     // ---- parameters ----
     void applyAll(int t);
-    void applyAlgo(int t); void applyEnv(int t); void applyLfo(int t); void applyHome(int t, bool commit = false); void applyArp(int t); void applySeq(int t); void applyMix(int t);
+    void applyAlgo(int t); void applyEnv(int t); void applyLfo(int t); void applyHome(int t, bool commit = false); void applyArp(int t); void applyRoot(int t); void applySeq(int t); void applyMix(int t);
     void applyFx();
     void queueCommit(int t);
     Knob cont(const char* name, float* v, std::function<std::string(float)> fmt, std::function<void()> apply, float stepSize = 0.02f, bool commit = false);

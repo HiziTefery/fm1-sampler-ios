@@ -1,4 +1,5 @@
 #include "Session.h"
+#include "Pitch.h"
 #include "Arp.h"
 #include "Common.h"
 #include "Filter.h"
@@ -27,7 +28,7 @@ struct Session::Impl {
     struct Note { int note, vel; };
     struct Track {
         std::unique_ptr<Sampler> sampler;
-        mutable std::mutex infoMtx; std::string label; std::vector<float> peaks;   // for the UI threads
+        mutable std::mutex infoMtx; std::string label; std::vector<float> peaks; std::shared_ptr<const SampleBuf> orig;   // for the UI threads
         // sound shaping
         Arp arp; bool arpOn = false;
         Lowpass filt; bool filtOn = false;
@@ -165,7 +166,7 @@ struct Session::Impl {
             Track& t = *tracks[track];
             releaseAll(t);
             std::swap(t.sampler, *holder);
-            { std::lock_guard<std::mutex> l(t.infoMtx); t.label = t.sampler->label(); t.peaks = t.sampler->peaks(); }
+            { std::lock_guard<std::mutex> l(t.infoMtx); t.label = t.sampler->label(); t.peaks = t.sampler->peaks(); t.orig = t.sampler->original(); }
             (void)kit;
             bury(std::move(*holder));
             a_sampleTrack = track; a_sampleVersion++; a_sampleState = 0;
@@ -449,6 +450,14 @@ void Session::loadSamplePath(const std::string& path, bool kit, int track) {
 }
 void Session::setMode(int t, int m) { if (t >= 0 && t < kTracks) d->post([=] { if (d->tracks[(size_t)t]->sampler) d->tracks[(size_t)t]->sampler->setMode(m); }); }
 void Session::setEnv(int t, float a, float dc, float s, float r) { if (t >= 0 && t < kTracks) d->post([=] { if (d->tracks[(size_t)t]->sampler) d->tracks[(size_t)t]->sampler->setEnv(a, dc, s, r); }); }
+void Session::setRoot(int t, float note) { if (t >= 0 && t < kTracks) d->post([=] { if (d->tracks[(size_t)t]->sampler) d->tracks[(size_t)t]->sampler->setRoot(note); }); }
+float Session::detectRoot(int t) const {
+    if (t < 0 || t >= kTracks) return -1.f;
+    std::shared_ptr<const SampleBuf> o; { std::lock_guard<std::mutex> l(d->tracks[(size_t)t]->infoMtx); o = d->tracks[(size_t)t]->orig; }
+    if (!o) return -1.f;
+    const float hz = detectPitchHz(*o);
+    return hz > 20.f ? 69.f + 12.f * std::log2(hz / 440.f) : -1.f;
+}
 void Session::setSampleRange(int t, float a, float b) {
     if (t < 0 || t >= kTracks) return;
     d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.rangeA = clampf(a, 0.f, 1.f); tr.rangeB = clampf(b, 0.f, 1.f); if (tr.sampler) tr.sampler->setRange(a, b); });

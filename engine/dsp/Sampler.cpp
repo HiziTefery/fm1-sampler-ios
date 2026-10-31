@@ -13,8 +13,17 @@ bool Sampler::load(const std::string& path) {
     if (!readWav(path, buf->d, buf->sr)) return false;
     buf->frames = (int)(buf->d.size() / 2);
     if (buf->frames < 64) return false;
+    // loudness normalisation: the RMS of the part that sounds (20 ms blocks within 30 dB of the loudest one) goes to a common level, the peak never passes 0.95
     float pk = 0.f; for (float v : buf->d) pk = std::max(pk, std::fabs(v));
-    if (pk > 1e-4f) { const float g = std::min(8.f, 0.9f / pk); for (float& v : buf->d) v *= g; }   // quiet files are brought up to a usable level
+    if (pk > 1e-4f) {
+        const int blk = std::max(64, buf->sr / 50); const int nb = std::max(1, buf->frames / blk);
+        std::vector<double> e((size_t)nb, 0.0); double emax = 0;
+        for (int b = 0; b < nb; b++) { double s = 0; for (int i = b * blk; i < (b + 1) * blk && i < buf->frames; i++) s += (double)buf->d[2 * (size_t)i] * buf->d[2 * (size_t)i] + (double)buf->d[2 * (size_t)i + 1] * buf->d[2 * (size_t)i + 1]; e[(size_t)b] = s / (2.0 * blk); emax = std::max(emax, e[(size_t)b]); }
+        double sum = 0; int cnt = 0; for (double v : e) if (v > emax * 1e-3) { sum += v; cnt++; }
+        const float rms = cnt ? (float)std::sqrt(sum / cnt) : pk;
+        const float g = std::min(0.95f / pk, 0.25f / std::max(rms, 1e-4f));
+        for (float& v : buf->d) v *= g;
+    }
     peaks_.assign(512, 0.f);
     for (int b = 0; b < 512; b++) {
         const long a = (long)buf->frames * b / 512, e = std::max(a + 1, (long)buf->frames * (b + 1) / 512), step = std::max(1L, (e - a) / 64);
@@ -85,7 +94,7 @@ void Sampler::render(float* out, int n) {
 void Sampler::renderVoice(Voice& v, float* out, int n) {
     const float* d = v.buf->d.data(); const int frames = v.buf->frames;
     const double srcRate = (double)v.buf->sr / sr_;
-    const double pitch = mode_ == KIT ? 1.0 : std::pow(2.0, (v.note - 60 + bend_) / 12.0);
+    const double pitch = mode_ == KIT ? 1.0 : std::pow(2.0, (v.note - root_ + bend_) / 12.0);
     const double rate = srcRate * pitch;
     auto readAt = [&](double p, float& l, float& r) {
         const int i0 = std::min(frames - 2, std::max(0, (int)p)); const float f = (float)(p - i0);

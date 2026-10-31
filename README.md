@@ -42,6 +42,10 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 | OCT -/+ | handled by the firmware (octave) |
 | keys | KIT algorithm: all 27 keys are pads (note 60 + key, 16 slices repeat over the keys), every key lit, tonality and octave ignored. Otherwise the firmware is kept on a plain chromatic keyboard (scale OFF, SysEx 06 always sends 7; notes 53+key) so keys outside the tonality still play; the app adds the octave, builds triads itself in CHORD mode and lights ONLY keys that belong to the scale (root of each octave blinks; scale OFF: only roots); a sounding key goes dark. |
 
+## Levels and tuning
+- Every sample is loudness-normalised on load (`Sampler::load`): the RMS of the part that sounds (20 ms blocks within 30 dB of the loudest) goes to 0.25, the peak never passes 0.95, so short hits and long pads sit at similar levels.
+- Auto-tune (tuning fork pictogram in the sample view, MELODIC and ONE-SHOT only): `dsp/Pitch.h` (YIN on the loudest window of the first 1.5 s) finds the pitch, the track's root note becomes that pitch (`Sampler::setRoot`), so the keys sound the right notes; tap again to reset. A new sample resets it. The phone CLEAR key clears the loop of the selected track.
+
 ## Sample sources
 - **Bundled library** (`samples/`, packed into the APK assets, copied to `files/samples` once): Bass, Drums (loaded as KIT), Keys, Pads.
 - **Microphone**: phone button "RECORD FROM MIC" or LOOP page K1. Waits for sound above the trigger level, trims and normalises, saves `sample_<ms>.wav` in the data dir, loads it on the track it was started on.

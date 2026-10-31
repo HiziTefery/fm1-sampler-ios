@@ -146,9 +146,16 @@ void SamplerUI::sampleView(Rect r) {
         const float lx = bx + bw * 2.5f, ly = by + bh / 2;   // library: books on a shelf
         rrect({lx - 8, ly - 5, 4, 12}, 0, kPaper); rrect({lx - 2, ly - 8, 4, 15}, 0, kPaper); rrect({lx + 4, ly - 6, 4, 13}, 0, kPaper);
         tap({bx + 2 * bw, by, bw, bh}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+        if (ts.algo <= 1) {   // auto-tune (MELODIC, ONE-SHOT): a tuning fork; orange while the sample is tuned
+            const float ax = bx - bw / 2, ay = by + bh / 2; const uint32_t ac = app_.tuned(t) ? kOrange : kPaper;
+            line(ax - 4, ay - 8, ax - 4, ay, ac, 1.8f); line(ax + 4, ay - 8, ax + 4, ay, ac, 1.8f);
+            line(ax - 4, ay, ax - 2, ay + 3, ac, 1.8f); line(ax - 2, ay + 3, ax + 2, ay + 3, ac, 1.8f); line(ax + 2, ay + 3, ax + 4, ay, ac, 1.8f);
+            line(ax, ay + 3, ax, ay + 9, ac, 1.8f);
+            tap({bx - bw, by, bw, bh}, [this] { app_.autoTune(); });
+        }
     }
     const int nv = st_.voiceN[t];
-    if (nv > 0) text(r.x + r.w - 3 * 34 - 8, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
+    if (nv > 0) text(r.x + r.w - (ts.algo <= 1 ? 4 : 3) * 34 - 8, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
     const Rect w{r.x, r.y + 20, r.w, r.h - 20};
     if (micS == 1 || micS == 2) {   // the microphone take: the level and the trigger line while it waits, the growing take while it records; one big button ends it
         const float cy0 = w.y + w.h / 2, half = w.h / 2 - 3;
@@ -165,9 +172,10 @@ void SamplerUI::sampleView(Rect r) {
             float live[2048]; const int n = app_.session().livePeaks(live, 2048);
             const int cols = std::max(20, (int)(w.w / 3)), per = std::max(1, (n + cols - 1) / cols);
             const float bw0 = w.w / std::max(cols, (n + per - 1) / per);
+            float lmax = 0.05f; for (int j = 0; j < n; j++) lmax = std::max(lmax, live[j]);   // normalised to the loudest part so far
             for (int i = 0; i * per < n; i++) {
                 float v = 0; for (int j = i * per; j < std::min(n, (i + 1) * per); j++) v = std::max(v, live[j]);
-                v = std::min(1.f, v * 1.1f);
+                v = std::min(1.f, v / lmax);
                 rrect({w.x + i * bw0, cy0 - std::max(1.f, v * half), std::max(1.f, bw0 - 1), std::max(2.f, v * half * 2)}, 0, kPaper);
             }
         }
@@ -185,10 +193,10 @@ void SamplerUI::sampleView(Rect r) {
         const float pos = (i + 0.5f) / bins, v = std::min(1.f, pk[(size_t)i] * 1.1f);
         rrect({w.x + i * bw, cy - std::max(1.f, v * (w.h / 2 - 1)), std::max(1.f, bw - 0.6f), std::max(2.f, v * (w.h - 2))}, 0, pos >= ts.start && pos <= ts.end ? kPaper : kLine);
     }
-    for (int j = 0; j < nv; j++) {   // a voice: a line and a dot that shrink as its envelope dies away
+    for (int j = 0; j < nv; j++) {   // a voice: a line of constant brightness that gets shorter as its envelope dies away
         const float vx = w.x + std::min(1.f, std::max(0.f, st_.voicePos[t][j])) * w.w, lv = clamp01(st_.voiceLvl[t][j]);
-        line(vx, w.y, vx, w.y + w.h, theme::argb(255, 104, 40, 70 + (int)(185 * lv)), 1 + 1.5f * lv);
-        circle(vx, w.y + w.h - 8, 1.5f + 6.5f * lv, kOrange);
+        const float h = std::max(4.f, lv * (w.h - 2));
+        line(vx, cy - h / 2, vx, cy + h / 2, kOrange, 2);
     }
 }
 
@@ -351,6 +359,7 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
     else if (icon == 2) { rrect({cx - 6, cy - 7, 4.5f, 14}, 0, ink); rrect({cx + 2, cy - 7, 4.5f, 14}, 0, ink); }
     else if (icon == 3) circle(cx, cy, 6.5f, kOrange);
     else if (icon == 4) rrect({cx - 6, cy - 6, 12, 12}, 1, ink);
+    else if (icon == 5) { line(cx - 6, cy - 6, cx + 6, cy + 6, ink, 2.2f); line(cx - 6, cy + 6, cx + 6, cy - 6, ink, 2.2f); }
     text(cx, icon ? r.y + r.h - 9 : r.y + r.h / 2, 9, ink, label, 1, true);
     tap(r, std::move(f));
 }
@@ -372,11 +381,12 @@ void SamplerUI::deck(Rect r) {
     }
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);
     // transport under the cassette: PLAY, STOP, REC / OVERDUB; PROJECT and EDIT at the right end of the same row
-    const float ty = top + ch + 8, kh = 36, tg = 6, tkw = (cw - 2 * tg) / 3;
+    const float ty = top + ch + 8, kh = 36, tg = 6, tkw = (cw - 3 * tg) / 4;
     key({cxl, ty, tkw, kh}, "PLAY", 1, st_.playing, [this] { app_.transportSet(true); }, false);
     key({cxl + tkw + tg, ty, tkw, kh}, "STOP", 4, false, [this] { app_.transportSet(false); }, false);
     key({cxl + 2 * (tkw + tg), ty, tkw, kh}, app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }, false);
     if (armed && (now_ / 400) % 2 == 0) rrect({cxl + 2 * (tkw + tg), ty + kh - 3, tkw, 3}, 0, kOrange);
+    key({cxl + 3 * (tkw + tg), ty, tkw, kh}, "CLEAR", 5, false, [this] { app_.loopClearTrack(); }, false);   // the loop of the selected track
     // (the PROJECT key is muted for now: projectSheet() stays, nothing opens it)
     const float tl = ty + kh + 10;
     timeline({12, tl, W_ - 24, H_ - 12 - tl});

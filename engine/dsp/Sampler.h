@@ -38,6 +38,7 @@ public:
     // the offline stretched / pitched copy of the range [a, b] (null: play the original)
     void setProcessed(std::shared_ptr<const SampleBuf> p, float a, float b);
     void setBend(float semitones) { bend_ = semitones; }
+    void setRoot(float note) { root_ = note; }   // the note at which the sample sounds as recorded (60 = C4; auto-tune sets the detected pitch)
     void noteOn(int note, int vel);
     void noteOff(int note);
     void allOff();
@@ -60,7 +61,7 @@ private:
 
     int sr_;
     std::shared_ptr<const SampleBuf> orig_, proc_;
-    float procA_ = 0, procB_ = 1, rangeA_ = 0, rangeB_ = 1, bend_ = 0, atk_ = 0.01f, dec_ = 0.3f, sus_ = 0.8f, rel_ = 0.3f;
+    float procA_ = 0, procB_ = 1, rangeA_ = 0, rangeB_ = 1, bend_ = 0, atk_ = 0.01f, dec_ = 0.3f, sus_ = 0.8f, rel_ = 0.3f, root_ = 60.f;
     int mode_ = MELODIC; std::vector<int> slices_; std::string label_; std::vector<float> peaks_;
     Voice voices_[kVoices]; std::vector<std::unique_ptr<PaulStream>> paul_; bool paulBusy_[kVoices] = {};
     uint32_t bornCounter_ = 0, rng_ = 7;

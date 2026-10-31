@@ -102,7 +102,18 @@ void SamplerApp::importFile(const std::string& wav) {
 
 // ---- parameters ----
 void SamplerApp::applyAll(int t) {
-    applyAlgo(t); applyEnv(t); applyLfo(t); applyHome(t); applyArp(t); applySeq(t); applyMix(t);
+    applyAlgo(t); applyRoot(t); applyEnv(t); applyLfo(t); applyHome(t); applyArp(t); applySeq(t); applyMix(t);
+}
+void SamplerApp::applyRoot(int t) { s_.setRoot(t, ts_[t].tuned ? ts_[t].root : 60.f); }
+void SamplerApp::autoTune() {
+    const int t = track_;
+    if (ts_[t].algo > 1) { say("AUTOTUNE: MELODIC OR ONE-SHOT"); return; }
+    if (ts_[t].tuned) { ts_[t].tuned = false; applyRoot(t); say("TUNING RESET"); return; }
+    const float m = s_.detectRoot(t);
+    if (m < 0) { say("NO CLEAR PITCH IN THIS SAMPLE"); return; }
+    const int n = (int)std::lround(m), cents = (int)std::lround((m - n) * 100.f);
+    ts_[t].root = m; ts_[t].tuned = true; applyRoot(t);
+    say(std::string("TUNED: ") + noteName(n) + std::to_string(n / 12 - 1) + (cents >= 0 ? " +" : " ") + std::to_string(cents) + " CT");
 }
 void SamplerApp::applyAlgo(int t) { s_.setMode(t, ts_[t].algo); }
 void SamplerApp::applyEnv(int t) {
@@ -441,6 +452,7 @@ void SamplerApp::tick(uint32_t now) {
     if (auditionAt_ && now >= auditionAt_) loadEntry(libCursor_);
     if (st_.sampleVersion != lastSampleVersion_) {   // a sample landed on a track: give it this track's settings
         lastSampleVersion_ = st_.sampleVersion;
+        if (st_.sampleTrack >= 0 && st_.sampleTrack < kTracks) ts_[st_.sampleTrack].tuned = false;   // a new sample: its pitch is unknown again
         for (int i = 0; i < kTracks; i++) if (hasSample(i)) applyAll(i);   // several samples can land between two ticks (start-up): every track gets its settings, not only the last
         if (previewAfterLoad_ && st_.sampleTrack == track_) { previewAfterLoad_ = false; previewNote_ = 60; previewTrack_ = track_; s_.noteOn(track_, 60, 100); previewOffAt_ = now + 900; }
     }
