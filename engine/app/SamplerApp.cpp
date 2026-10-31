@@ -274,7 +274,18 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
 }
 
 // ---- looper, recorder ----
-void SamplerApp::transportPlay() { s_.play(!st_.playing); }
+void SamplerApp::endRecording() {
+    if (st_.freeArmed || st_.freeRecording) { s_.freeRecord(track_, false); say(st_.freeArmed && !st_.freeRecording ? "CANCELLED" : "LOOP SET"); }
+    for (int t = 0; t < kTracks; t++) if (st_.track_clip_rec[t]) s_.clipRecord(t, false);
+}
+void SamplerApp::transportPlay() {   // while recording the first press ends the recording (the loop plays on), the next one stops the tape
+    if (recordingNow()) { endRecording(); return; }
+    s_.play(!st_.playing);
+}
+void SamplerApp::transportSet(bool play) {
+    if (recordingNow()) { if (!play) endRecording(); return; }
+    s_.play(play);
+}
 void SamplerApp::loopRecord() {
     if (st_.freeArmed || st_.freeRecording) { s_.freeRecord(track_, false); say("LOOP SET"); return; }
     if (!loopAny_ && !st_.track_clip_rec[track_]) {   // a clean looper: arm the first take, it starts with the first note (or sound) and sets the loop length

@@ -36,7 +36,7 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 | EDIT | mixer of the selected track: VOLUME, PAN, REVERB SEND, DELAY SEND |
 | GLO | key and scale: SCALE, ROOT, OCTAVE, MODE (KEY/CHORD). Drives the firmware's key mapping (SysEx 06) |
 | SAVE | page LOOP. Tap = save the loop of the selected track into the library, hold 0.7 s = clear ALL loops (every track), also the phone CLEAR button. Knobs: MIC SAMPLE, LOOP SOURCE, SAVE LOOP, MIC THRESHOLD (-46..-6 dB, level that starts a mic take; used by mic sampling and mic loop source) |
-| PLAY | play / stop |
+| PLAY | play / stop. While recording the first press only ends the recording (the loop plays on), the next one stops the tape. Start and stop are tape-like: the loops run up from standstill (0.45 s) and slow down to it (0.7 s) |
 | REC | clean looper: arms the first take (it starts with the first key or sound and sets the loop length and tempo; REC again ends it). Loop exists: toggles overdub on the selected track |
 | SEL (the button after FX; index 3, the protocol and the firmware call it SCL) | page LENGTH: K1 LENGTH (turn up = loop x2 with its content repeated, down = /2), K2 DUPLICATE, K3 HALVE, K4 bars/bpm (read-only). Needs the firmware built here (`firmware/FM1-Sampler-Workbench.html`): it forwards SCL as button 3 and has no scale screen; the stock/fm1-daw firmware keeps SCL local |
 | OCT -/+ | handled by the firmware (octave) |

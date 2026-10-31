@@ -52,6 +52,8 @@ struct Session::Impl {
     int loopSrc = 1;   // what the loop records: 0 microphone, 1 the track's sound
 
     bool playing = false;
+    // tape start / stop: the loops speed up from standstill / slow down to it instead of cutting in and out
+    double rate = 1.0; bool stopping = false; std::vector<float> rateArr; std::vector<double> cpArr;
     float bpm = 120.f; int loopBars = 4;
     double pos = 0; int32_t loopSamples = 0;
     std::atomic<float> tapeSpeed{1.f}; double tapePos = 0;   // ONE tape pointer for every loop clip, so they never drift apart
@@ -268,9 +270,23 @@ struct Session::Impl {
         const bool tl = playing && !freeRec && loopSamples > 0;
         updateLoopPeaks();
         const double spd = tapeSpeed.load();
-        const bool locked = std::fabs(spd - 1.0) < 0.01;
+        if (!playing) { rate = 1.0; stopping = false; }
+        bool ramp = false; double rateSum = n, tapeEnd = tapePos;
+        if (tl && (stopping || rate < 1.0)) {   // the tape runs up to speed / down to standstill: a per-sample rate and read position
+            ramp = true; rateSum = 0;
+            if ((int)rateArr.size() < n) { rateArr.resize((size_t)n); cpArr.resize((size_t)n); }
+            const double step = stopping ? 1.0 / (0.7 * sr) : 1.0 / (0.45 * sr);
+            double acc = tapePos;
+            for (int i = 0; i < n; i++) {
+                rate = stopping ? std::max(0.0, rate - step) : std::min(1.0, rate + step);
+                rateArr[(size_t)i] = (float)rate; rateSum += rate; cpArr[(size_t)i] = acc;
+                acc = std::fmod(acc + spd * rate, (double)loopSamples);
+            }
+            tapeEnd = acc;
+        }
+        const bool locked = !ramp && std::fabs(spd - 1.0) < 0.01;
         const double tb = loopSamples > 0 ? (locked ? (double)(p0 % loopSamples) : tapePos) : 0.0;
-        if (loopSamples > 0) tapePos = !tl ? (double)(p0 % loopSamples) : locked ? (double)((p0 + n) % loopSamples) : std::fmod(tb + n * spd, (double)loopSamples);
+        if (loopSamples > 0) tapePos = ramp ? tapeEnd : !tl ? (double)(p0 % loopSamples) : locked ? (double)((p0 + n) % loopSamples) : std::fmod(tb + n * spd, (double)loopSamples);
         bool anyEvents;
         std::vector<Arp::Ev> evs;
         for (int ti = 0; ti < kTracks; ti++) {
@@ -316,7 +332,8 @@ struct Session::Impl {
             if (tl) {
                 for (int i = 0; i < n; i++) {
                     const int32_t k0 = (p0 + i) % loopSamples;
-                    const double cp = locked ? (double)k0 : std::fmod(tb + i * spd, (double)loopSamples);
+                    const double cp = ramp ? cpArr[(size_t)i] : locked ? (double)k0 : std::fmod(tb + i * spd, (double)loopSamples);
+                    const float lg = ramp ? rateArr[(size_t)i] : 1.f;   // while the tape starts / stops its level follows the speed
                     const float src0 = bus[2 * i], src1 = bus[2 * i + 1];
                     const int32_t k = (int32_t)cp % loopSamples;
                     if (t.clipHas) {
@@ -324,10 +341,10 @@ struct Session::Impl {
                         if (locked) { bus[2 * i] += c[(size_t)2 * k]; bus[2 * i + 1] += c[(size_t)2 * k + 1]; }
                         else {   // tape speed: its own read pointer, linear interpolation
                             const int32_t k1 = (k + 1) % loopSamples; const float fr = (float)(cp - std::floor(cp));
-                            bus[2 * i] += c[(size_t)2 * k] + (c[(size_t)2 * k1] - c[(size_t)2 * k]) * fr; bus[2 * i + 1] += c[(size_t)2 * k + 1] + (c[(size_t)2 * k1 + 1] - c[(size_t)2 * k + 1]) * fr;
+                            bus[2 * i] += (c[(size_t)2 * k] + (c[(size_t)2 * k1] - c[(size_t)2 * k]) * fr) * lg; bus[2 * i + 1] += (c[(size_t)2 * k + 1] + (c[(size_t)2 * k1 + 1] - c[(size_t)2 * k + 1]) * fr) * lg;
                         }
                     }
-                    if (t.clipRec) {
+                    if (t.clipRec && !ramp) {
                         if (t.clip.size() != (size_t)loopSamples * 2) t.clip.assign((size_t)loopSamples * 2, 0.f);
                         auto& c = t.clip;
                         // recording works at any tape speed, as the head of a tape machine: the input lands on the moving tape position.
@@ -377,10 +394,11 @@ struct Session::Impl {
         for (int i = 0; i < n * 2; i++) { const float v = std::tanh(out[i] * masterVol); out[i] = v; mp = std::max(mp, std::fabs(v)); }
         a_master.store(std::max(mp, a_master.load() * 0.92f));
         if (playing) {
-            pos += n;
+            pos += rateSum;
             if (freeRec) a_freeSec = (float)(pos / sr);
             else if (loopSamples > 0 && pos >= loopSamples) pos -= loopSamples;
         }
+        if (stopping && (rate <= 0.0 || !tl)) { playing = false; stopping = false; rate = 1.0; for (auto& t : tracks) releaseAll(*t); }
         if (sampling) a_sampleSec = (float)sampleBuf.size() / sr;
     }
 };
@@ -400,7 +418,7 @@ void Session::process(float* out, const float* in, int frames) {
         const int n = std::min(kBlock, frames - done);
         d->block(out + 2 * done, in ? in + 2 * done : nullptr, n);
     }
-    d->a_pos = d->pos; d->a_playing = d->playing; d->a_free = d->freeRec;
+    d->a_pos = d->pos; d->a_playing = d->playing && !d->stopping; d->a_free = d->freeRec;
     uint32_t cm = 0, rm = 0;
     for (int i = 0; i < kTracks; i++) { cm |= (uint32_t)d->tracks[(size_t)i]->clipHas << i; rm |= (uint32_t)d->tracks[(size_t)i]->clipRec << i; }
     d->a_clip_mask = cm; d->a_cliprec_mask = rm;
@@ -411,9 +429,13 @@ void Session::process(float* out, const float* in, int frames) {
 // ---- transport and notes ----
 void Session::play(bool on) {
     d->post([this, on] {
-        if (!on && (d->freeRec || d->freeArmed)) d->freeStop();
-        d->playing = on;
-        if (!on) for (auto& t : d->tracks) d->releaseAll(*t);
+        if (!on) {
+            if (d->freeRec || d->freeArmed) d->freeStop();
+            if (d->playing) d->stopping = true;   // the tape slows down to standstill (block() ends it: playing = false, notes released)
+        } else {
+            d->stopping = false;
+            if (!d->playing) { d->playing = true; d->rate = d->loopSamples > 0 ? 0.0 : 1.0; }   // the tape runs up from standstill
+        }
     });
 }
 void Session::noteOn(int t, int note, int vel) { if (t >= 0 && t < kTracks) d->post([=] { d->liveNote(t, note, std::max(1, vel)); }); }

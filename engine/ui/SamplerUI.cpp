@@ -237,7 +237,6 @@ void SamplerUI::cassette(Rect c) {
     else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
     char cnt[48]; snprintf(cnt, sizeof cnt, "%d:%04.1f / %d:%04.1f", (int)psec / 60, std::fmod(psec, 60.f), (int)lsec / 60, std::fmod(lsec, 60.f));
     text(lb.x + lb.w - 22, lb.y + 14, 9, kPaper, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
-    if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 14, lb.y + 33, 4.5f, kOrange); }
     // the tape loop: one closed ribbon round two rollers; it runs once round per loop, the orange dot is the splice = the start of the loop
     Rect wd{c.x + c.w * 0.02f, lb.y + lb.h + 8, c.w * 0.96f, c.h - (lb.h + 12) - 8 - 32 + 14};
     // The ribbon runs over two wheels (a big and a small one) and one roller inside the loop that pushes it out into a bend.

@@ -85,6 +85,22 @@ int main() {
       btn(FXB); run(0.6); const bool fx1 = pageLed(FXB) && !pageLed(SamplerApp::HOME);
       btn(ENVB); run(0.6); CHECK(fx1 && pageLed(ENVB) && !pageLed(FXB), "FM-1 LEDs: pressing another page button moves the light (ENV lit, FX dark)");
       const int before = ledFrames; ledMask = 0; run(1.0); CHECK(ledFrames > before && pageLed(ENVB), "FM-1 LEDs are resent periodically (the firmware may clear them)"); }
+    {   // PLAY / STOP: while recording it only ends the recording, the loop plays on; the next press stops the tape (it slows down, not a cut); PLAY runs it up again
+      app.selectTrack(0); app.loopClear(); run(0.3);
+      app.loopRecord(); run(0.1); app.playNote(60, true); run(0.15); app.playNote(60, false); app.playNote(64, true); run(0.5); app.playNote(64, false); run(0.3);
+      CHECK(app.status().freeRecording, "a take is recording");
+      app.transportPlay(); run(0.3);
+      CHECK(!app.status().freeRecording && app.loopExists() && app.status().playing, "PLAY/STOP while recording ends the recording and keeps playing");
+      size_t m1 = all.size(); run(1.2); const double playing1 = rmsFrom(m1);
+      CHECK(playing1 > 0.003, "the loop plays on (rms %.4f)", playing1);
+      app.transportPlay(); run(0.05);
+      CHECK(!app.status().playing, "second press: stopped");
+      size_t m2 = all.size(); run(0.15); const double slowing = rmsFrom(m2);
+      CHECK(slowing > 0.2 * playing1, "...but the tape slows down instead of cutting (rms %.4f vs %.4f)", slowing, playing1);
+      run(1.2); size_t m3 = all.size(); run(0.5); CHECK(rmsFrom(m3) < 0.15 * playing1, "...and stands still afterwards (only effect tails: rms %.5f)", rmsFrom(m3));
+      app.transportPlay(); run(0.1); size_t m4 = all.size(); run(0.3); const double up = rmsFrom(m4); size_t m5 = all.size(); run(1.5);
+      CHECK(app.status().playing && up < rmsFrom(m5) && rmsFrom(m5) > 0.003, "PLAY runs the tape up again (ramp rms %.4f, then %.4f)", up, rmsFrom(m5));
+      app.loopClear(); run(0.3); }
     // microphone sample
     btn(SamplerApp::SAVE);
     enc(2, 1); run(0.3); CHECK(app.micState() == 1, "mic sampling waits for sound");
