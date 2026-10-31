@@ -44,7 +44,10 @@ int main(int argc, char** argv) {
       static const char* nm[] = {"pg_fx", "pg_env", "pg_lfo", "pg_arp", "pg_seq", "pg_mix", "pg_key", "pg_save", "pg_len"};
       app.playNote(60, true); run(0.3);
       for (int i = 0; i < 9; i++) { app.gotoPage(pgs[i]); run(0.1); ui.frame(now); dump(nm[i]); }
-      app.playNote(60, false); app.gotoPage(SamplerApp::P_HOME); run(0.2); }
+      app.playNote(60, false); app.gotoPage(SamplerApp::P_MIX);   // the mixer once more with a sidechain: track 2 ducked by track 1
+      app.selectTrack(1); { auto k = app.knobs(SamplerApp::P_MIX); k[1].set(1.f / 8.f); k = app.knobs(SamplerApp::P_MIX); k[2].set(0.45f); k = app.knobs(SamplerApp::P_MIX); k[3].set(0.7f); }
+      app.playNote(60, true); app.selectTrack(0); app.playNote(60, true); run(0.8); app.selectTrack(1); ui.frame(now); dump("pg_mix_sc");
+      app.playNote(60, false); app.selectTrack(0); app.playNote(60, false); app.gotoPage(SamplerApp::P_HOME); run(0.2); }
     {   // the modes with their own K3 / K4: KIT on a drum sample (slices marked), GRAIN and PAUL
       const auto& lib = app.library(); int kit = -1; for (size_t i = 0; i < lib.size(); i++) if (lib[i].kit) { kit = (int)i; break; }
       app.selectTrack(3); if (kit >= 0) { app.loadEntry(kit); run(1.5); }

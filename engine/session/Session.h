@@ -35,6 +35,7 @@ public:
         int sampleFails;         // bumps when a sample could not be loaded
         float clipPos[kTracks];  // 0..1 read position of the loops (follows the loop speed)
         float lfoValue[kTracks]; // -1..1, for the UI
+        float scGain[kTracks], scLevel[kTracks];   // sidechain: the gain a track is pulled down to (1 = untouched) and the level it is measured by (its own level before the fader)
         int voiceN[kTracks]; float voicePos[kTracks][kVoiceMax], voiceLvl[kTracks][kVoiceMax];   // + their envelope levels (a voice shrinks as it dies away)   // sounding voices (every grain in granular mode): read positions 0..1 of the whole sample
     };
     struct Lfo { float rate = 1.f, depth = 0.f, base = 0.5f; int target = 0 /*0 pitch 1 filter 2 volume 3 pan*/, shape = 0 /*0 sine 1 tri 2 square 3 s&h*/; };

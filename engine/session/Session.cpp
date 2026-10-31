@@ -93,7 +93,7 @@ struct Session::Impl {
     std::atomic<uint32_t> a_cpu{0}, a_clip_mask{0}, a_cliprec_mask{0};
     std::atomic<int> a_bars{4}, a_sampleState{0}, a_sampleTrack{0}, a_sampleVersion{0}, a_sampleFails{0};
     std::atomic<int32_t> a_loop{0};
-    std::atomic<float> a_clipPos{0.f}, a_lfo[kTracks];
+    std::atomic<float> a_clipPos{0.f}, a_lfo[kTracks], a_scGain[kTracks], a_scLevel[kTracks];
     std::atomic<int> a_voiceN[kTracks]; std::atomic<float> a_voicePos[kTracks][kVoiceMax], a_voiceLvl[kTracks][kVoiceMax];
 
     std::vector<float> bus, tmp, sendBus[2], wet;
@@ -104,6 +104,8 @@ struct Session::Impl {
         for (auto& a : a_lpk) a = 0.f;
         for (auto& r : a_tpk) for (auto& a : r) a = 0.f;
         for (auto& a : a_lfo) a = 0.f;
+        for (auto& a : a_scGain) a = 1.f;
+        for (auto& a : a_scLevel) a = 0.f;
         for (auto& a : a_voiceN) a = 0;
         worker = std::thread([this] {
             for (;;) {
@@ -342,6 +344,7 @@ struct Session::Impl {
             } else t.lfoVal = 0.f;
             if (filterOn != t.filtOn) { t.filtOn = filterOn; t.filt.reset(); }
             a_lfo[ti].store(t.lfoVal);
+            a_scGain[ti].store(t.scGain); a_scLevel[ti].store(t.scEnv);
             // notes of the block: live ones at the start, the arpeggiator's with sample accurate offsets
             evs.clear();
             for (auto& nt : t.pending) evs.push_back({0, nt.note, nt.vel});
@@ -705,7 +708,7 @@ Session::Status Session::status() const {
     for (int i = 0; i < kTracks; i++) {
         s.track_peak[i] = d->tracks[(size_t)i]->peak;
         s.track_has_clip[i] = cm >> i & 1; s.track_clip_rec[i] = rm >> i & 1;
-        s.clipPos[i] = d->a_clipPos; s.lfoValue[i] = d->a_lfo[i];
+        s.clipPos[i] = d->a_clipPos; s.lfoValue[i] = d->a_lfo[i]; s.scGain[i] = d->a_scGain[i]; s.scLevel[i] = d->a_scLevel[i];
         s.voiceN[i] = std::min(kVoiceMax, d->a_voiceN[i].load()); for (int j = 0; j < s.voiceN[i]; j++) { s.voicePos[i][j] = d->a_voicePos[i][j]; s.voiceLvl[i][j] = d->a_voiceLvl[i][j]; }
     }
     s.freeRecording = d->a_free; s.freeArmed = d->a_freeArmed; s.freeSeconds = d->a_freeSec;

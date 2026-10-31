@@ -234,17 +234,28 @@ void SamplerUI::pageView(Rect r) {
         }
         poly(pts, kPaper, 2.7f);
         break; }
-    case P::P_MIX: {   // eight faders, one per track: the cap is the volume, the orange bar next to it the live level, the selected track is orange
-        head = "LEVELS + SIDECHAIN";
-        const float cw = w.w / 8;
-        for (int i = 0; i < 8; i++) {
-            const float x = w.x + (i + 0.5f) * cw, top = w.y + 6, bot = w.y + w.h - 16, v = app_.state(i).vol, y = bot - v * (bot - top), sel = i == t;
-            vbar(x, top, bot, kLine, 2.7f);
-            vbar(x + 11, bot, bot - std::min(1.f, st_.track_peak[i] * 1.5f) * (bot - top), kOrange, 3);
-            rrect({x - 9, y - 2.5f, 18, 5}, 0, sel ? kOrange : kPaper);
-            text(x, w.y + w.h - 5, 9, sel ? kOrange : kDim, std::to_string(i + 1), 1, true);
-            if (app_.state(i).scSrc > 0 && app_.state(i).scSrc - 1 != i) text(x, w.y + 2, 9, kDim, "<" + std::to_string(app_.state(i).scSrc), 1, true);   // ducked by this track
-        }
+    case P::P_MIX: {   // only the active channel: its fader with the live level, and the sidechain: the level of the source against the threshold, the gain it is pulled down to
+        head = "TRACK " + std::to_string(t + 1) + "  SIDECHAIN";
+        const float top = w.y + 6, bot = w.y + w.h - 16;
+        const float fx = w.x + 40, y = bot - ts.vol * (bot - top);
+        vbar(fx, top, bot, kLine, 2.7f);
+        vbar(fx + 14, bot, bot - std::min(1.f, st_.track_peak[t] * 1.5f) * (bot - top), kOrange, 4);
+        rrect({fx - 14, y - 2.5f, 28, 5}, 0, kPaper);
+        text(fx, w.y + w.h - 5, 9, kDim, "LEVEL", 1, true);
+        const int src = ts.scSrc - 1;
+        if (src < 0 || src == t) { text(w.x + 250, cy, 11, kDim, "SIDECHAIN OFF", 1, true); break; }
+        const float thrDb = -40.f * (1.f - kn[2].norm), ratio = 1.f + 19.f * kn[3].norm * kn[3].norm;
+        auto yOf = [&](float db) { return bot - std::min(1.f, std::max(0.f, (db + 60.f) / 60.f)) * (bot - top); };   // -60 .. 0 dB over the height
+        const float sx = w.x + 150, gx = w.x + 290, lvDb = 20.f * std::log10(std::max(1e-5f, st_.scLevel[src]));
+        vbar(sx, top, bot, kLine, 2.7f);
+        vbar(sx, bot, yOf(lvDb), kPaper, 8);   // the level of the source
+        rrect({sx - 14, yOf(thrDb) - 1.3f, 28, 2.7f}, 0, kOrange);   // the threshold
+        text(sx, w.y + w.h - 5, 9, kDim, "TRACK " + std::to_string(src + 1), 1, true);
+        text(sx + 22, yOf(thrDb) + 3, 9, kOrange, num("%.0f DB", thrDb) + "  " + num("%.1f:1", ratio), 0, true);
+        const float gr = std::min(1.f, std::max(0.f, 1.f - st_.scGain[t]));   // how far it is pulled down (0 .. 1)
+        vbar(gx, top, bot, kLine, 2.7f);
+        vbar(gx, top, top + gr * (bot - top), kOrange, 8);
+        text(gx, w.y + w.h - 5, 9, kDim, "REDUCTION", 1, true);
         break; }
     case P::P_KEY: {   // two octaves of semitones: the scale in ink, the root in orange, the rest dim
         const auto sc = app_.scale();
