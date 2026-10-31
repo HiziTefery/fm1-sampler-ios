@@ -383,6 +383,7 @@ void SamplerApp::onSysex(const uint8_t* m, size_t n) {
     else if (m[6] == 0x42) needClear_ = true;     // the firmware had its own screen up: repaint everything
 }
 void SamplerApp::button(int b, bool down) {
+    lastLed_ = ~0ull;   // the firmware's own LED handling must not win: the active page stays lit, the others go dark
     if (down) held_ |= 1u << b; else held_ &= ~(1u << b);
     if (b == SAVE) {   // only the LOOP page: saving and clearing loops lives in the phone's PROJECT menu
         if (down) page_ = P_SAVE;
@@ -429,7 +430,7 @@ void SamplerApp::tick(uint32_t now) {
     if (auditionAt_ && now >= auditionAt_) loadEntry(libCursor_);
     if (st_.sampleVersion != lastSampleVersion_) {   // a sample landed on a track: give it this track's settings
         lastSampleVersion_ = st_.sampleVersion;
-        applyAll(st_.sampleTrack);
+        for (int i = 0; i < kTracks; i++) if (hasSample(i)) applyAll(i);   // several samples can land between two ticks (start-up): every track gets its settings, not only the last
         if (previewAfterLoad_ && st_.sampleTrack == track_) { previewAfterLoad_ = false; previewNote_ = 60; previewTrack_ = track_; s_.noteOn(track_, 60, 100); previewOffAt_ = now + 900; }
     }
     if (st_.sampleFails != lastSampleFails_) { lastSampleFails_ = st_.sampleFails; say("COULD NOT LOAD THE FILE"); }
@@ -528,11 +529,11 @@ void SamplerApp::leds() {
         if (note < 0 || note > 127) on = false;
         if (on) m |= 1ull << (14 + k);
     }
-    if (m == lastLed_) return;
-    lastLed_ = m;
+    if (m == lastLed_ && nowMs_ - ledAt_ < 400) return;
+    lastLed_ = m; ledAt_ = nowMs_;
     std::vector<uint8_t> p(6);
     for (int i = 0; i < 6; i++) p[i] = (uint8_t)(m >> (7 * i) & 127);
-    sysex(1, p);
+    sysex(1, p, true, 900);   // keyed: a newer state replaces an older one still waiting in the queue
 }
 
 // ---- screen ----

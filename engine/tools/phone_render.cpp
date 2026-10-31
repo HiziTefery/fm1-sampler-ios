@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     tab(8); ui.frame(now); dump("loop");
     tab(9); ui.frame(now); dump("len");
     tab(0);
-    app.playNote(60, true); app.playNote(67, true); run(0.5); ui.frame(now); dump("voices"); app.playNote(60, false); app.playNote(67, false); run(0.3);
+    app.playNote(60, true); app.playNote(67, true); run(0.5); ui.frame(now); dump("voices"); ui.setEditor(false); ui.frame(now); dump("deck_voices"); ui.setEditor(true); app.playNote(60, false); app.playNote(67, false); run(0.3);
     tapAt(60, 100); run(1.0); ui.frame(now); dump("track2");
     app.micSample(); in.assign(512, 0.01f); run(0.4); ui.frame(now); dump("mic_wait");
     { double ph = 0; for (long i = 0; i < 3 * sr / 256; i++) { for (int k = 0; k < 256; k++) { double env = 0.15 + 0.6 * std::fabs(std::sin(i * 256.0 / sr * 2.2)); float v = (float)(env * std::sin(ph)); ph += 0.05; in[2 * k] = in[2 * k + 1] = v; } std::fill(buf.begin(), buf.end(), 0.f); s.process(buf.data(), in.data(), 256); std::this_thread::sleep_for(std::chrono::microseconds(200)); if (i % 5 == 0) { now += 33; app.tick(now); } } }

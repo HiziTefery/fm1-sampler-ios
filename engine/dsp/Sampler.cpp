@@ -150,15 +150,15 @@ float Sampler::orginalPosOf(const Voice& v) const {
     return clampf((float)(pos / orig_->frames), 0.f, 1.f);
 }
 
-int Sampler::voicePositions(float* out, int maxN) const {
+int Sampler::voicePositions(float* out, int maxN, float* level) const {
     int n = 0;
     for (auto& v : voices_) {
         if (!v.on || n >= maxN) continue;
         if (mode_ == GRAIN) {
             for (auto& g : v.grain) if (g.on && n < maxN) {
-                Voice tmp = v; tmp.pos = g.pos; out[n++] = orginalPosOf(tmp);
+                Voice tmp = v; tmp.pos = g.pos; if (level) level[n] = v.env.level * std::sin(3.14159265f * std::min(1.f, (float)g.age / (float)std::max(1, g.len))); out[n++] = orginalPosOf(tmp);
             }
-        } else out[n++] = orginalPosOf(v);
+        } else { if (level) level[n] = v.env.level * v.vel; out[n++] = orginalPosOf(v); }
     }
     return n;
 }

@@ -154,7 +154,7 @@ private:
     uint32_t gap_ = 16, lastSend_ = 0, lastPing_ = 0, lastLoss_ = 0, lastRaise_ = 0, dropped_ = 0, healAt_ = 0, lastDraw_ = 0, nowMs_ = 0;
     bool haveDropBase_ = false, needClear_ = true, needResend_ = false, linkSeen_ = false;
     int pingId_ = 0, healCursor_ = 0;
-    uint64_t lastLed_ = ~0ull;
+    uint64_t lastLed_ = ~0ull; uint32_t ledAt_ = 0;   // the firmware may light / clear a button LED by itself when it is pressed: resend after every button event and every 400 ms
     int knobMsb_ = 0;
     int heldNote_[128];
     int keyNotes_[128][3] = {}; int keyCount_[128] = {};

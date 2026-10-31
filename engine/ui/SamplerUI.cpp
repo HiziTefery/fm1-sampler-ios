@@ -157,9 +157,10 @@ void SamplerUI::sampleView(Rect r) {
         const float pos = (i + 0.5f) / bins, v = std::min(1.f, pk[(size_t)i] * 1.1f);
         rrect({w.x + i * bw, cy - std::max(1.f, v * (w.h / 2 - 1)), std::max(1.f, bw - 0.6f), std::max(2.f, v * (w.h - 2))}, 0, pos >= ts.start && pos <= ts.end ? kPaper : kLine);
     }
-    for (int j = 0; j < nv; j++) {
-        const float vx = w.x + std::min(1.f, std::max(0.f, st_.voicePos[t][j])) * w.w;
-        line(vx, w.y, vx, w.y + w.h, kOrange, 2);
+    for (int j = 0; j < nv; j++) {   // a voice: a line and a dot that shrink as its envelope dies away
+        const float vx = w.x + std::min(1.f, std::max(0.f, st_.voicePos[t][j])) * w.w, lv = clamp01(st_.voiceLvl[t][j]);
+        line(vx, w.y, vx, w.y + w.h, theme::argb(255, 104, 40, 70 + (int)(185 * lv)), 1 + 1.5f * lv);
+        circle(vx, w.y + w.h - 8, 1.5f + 6.5f * lv, kOrange);
     }
 }
 
@@ -186,7 +187,7 @@ void SamplerUI::cassette(Rect c) {
     const bool recNow = st_.freeRecording || st_.track_clip_rec[t];
     const int mic = app_.micState();
     // label: paper strip with a coloured edge, the sample name, the counter
-    Rect lb{c.x + 4, c.y + 12, c.w - 8, 50};
+    Rect lb{c.x + 4, c.y + 6, c.w - 8, 50};
     std::string title = app_.sampleLabel(t), sub;
     if (title.empty()) title = "EMPTY TRACK";
     if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
@@ -252,7 +253,7 @@ void SamplerUI::cassette(Rect c) {
         }
         x = segs[0].x0; y = segs[0].y0;
     };
-    const float turn = hasLoop ? lp : st_.freeRecording ? std::fmod((float)now_ / 2500.f, 1.f) : 0.f;
+    const float turn = hasLoop ? lp : 0.f;   // without a loop the tape stands still
     const uint32_t tapeCol = recNow ? kOrange : kPaper;
     for (const Seg& g : segs) {
         if (!g.arc) { line(g.x0, g.y0, g.x1, g.y1, tapeCol, 2.5f); continue; }
@@ -330,10 +331,10 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
 void SamplerUI::deck(Rect r) {
     rrect({0, 0, W_, H_}, 0, kBg);
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
-    const float top = 12, ch = 170, cw = std::min(ch * 1.75f, W_ * 0.42f);
+    const float top = 0, ch = 170, cw = std::min(ch * 1.75f, W_ * 0.42f);
     const float cxl = 10, zr = W_ - 20, x0 = cxl + cw + 24, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
-    const float vh = 78;
+    const float vh = 100;
     sampleView({x0, top + 2, w0, vh});
     const float py = top + vh + 24;
     text(x0, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
@@ -344,15 +345,20 @@ void SamplerUI::deck(Rect r) {
     }
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);
     // transport under the cassette: PLAY, STOP, REC / OVERDUB; PROJECT and EDIT at the right end of the same row
-    const float ty = 200, kh = 36, tg = 6, tkw = (cw - 2 * tg) / 3;
+    const float ty = top + ch + 8, kh = 36, tg = 6, tkw = (cw - 2 * tg) / 3;
     key({cxl, ty, tkw, kh}, "PLAY", 1, st_.playing, [this] { app_.transportSet(true); }, false);
     key({cxl + tkw + tg, ty, tkw, kh}, "STOP", 4, false, [this] { app_.transportSet(false); }, false);
     key({cxl + 2 * (tkw + tg), ty, tkw, kh}, app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }, false);
     if (armed && (now_ / 400) % 2 == 0) rrect({cxl + 2 * (tkw + tg), ty + kh - 3, tkw, 3}, 0, kOrange);
-    key({zr - 2 * 90 - tg, ty, 90, kh}, "PROJECT", 0, projectOpen_, [this] { projectOpen_ = true; clearArmed_ = 0; }, false);
-    key({zr - 90, ty, 90, kh}, "EDIT", 0, false, [this] { editor_ = true; }, false);
+    // (the PROJECT key is muted for now: projectSheet() stays, nothing opens it)
     const float tl = ty + kh + 10;
     timeline({12, tl, W_ - 24, H_ - 12 - tl});
+    {   // the view switch: a pictogram of sliders in the bottom right corner opens the editor
+        const float sx = W_ - 20, sy = H_ - 20;
+        rrect({sx - 18, sy - 18, 36, 36}, 0, kBg);
+        for (int i = 0; i < 3; i++) { line(sx - 11, sy - 8 + i * 8, sx + 11, sy - 8 + i * 8, kPaper, 1.6f); circle(sx - 5 + (i == 1 ? 9 : i == 2 ? 3 : 0), sy - 8 + i * 8, 3, kPaper); }
+        tap({sx - 28, sy - 28, 56, 56}, [this] { editor_ = true; });
+    }
 }
 
 void SamplerUI::trackList(Rect r) {

@@ -84,7 +84,7 @@ struct Session::Impl {
     std::atomic<int> a_bars{4}, a_sampleState{0}, a_sampleTrack{0}, a_sampleVersion{0}, a_sampleFails{0};
     std::atomic<int32_t> a_loop{0};
     std::atomic<float> a_clipPos{0.f}, a_lfo[kTracks];
-    std::atomic<int> a_voiceN[kTracks]; std::atomic<float> a_voicePos[kTracks][kVoiceMax];
+    std::atomic<int> a_voiceN[kTracks]; std::atomic<float> a_voicePos[kTracks][kVoiceMax], a_voiceLvl[kTracks][kVoiceMax];
 
     std::vector<float> bus, tmp, sendBus[2], wet;
 
@@ -306,8 +306,8 @@ struct Session::Impl {
                     if (e.vel) t.sampler->noteOn(e.note, e.vel); else t.sampler->noteOff(e.note);
                 }
                 if (cur < n) t.sampler->render(bus.data() + 2 * cur, n - cur);
-                float vp[kVoiceMax]; const int vn = t.sampler->voicePositions(vp, kVoiceMax);
-                for (int i = 0; i < vn; i++) a_voicePos[ti][i].store(vp[i]);
+                float vp[kVoiceMax], vl[kVoiceMax]; const int vn = t.sampler->voicePositions(vp, kVoiceMax, vl);
+                for (int i = 0; i < vn; i++) { a_voicePos[ti][i].store(vp[i]); a_voiceLvl[ti][i].store(vl[i]); }
                 a_voiceN[ti].store(vn);
             } else a_voiceN[ti].store(0);
             if (t.filtOn) for (int i = 0; i < n; i++) { bus[2 * i] = t.filt.process(0, bus[2 * i]); bus[2 * i + 1] = t.filt.process(1, bus[2 * i + 1]); }
@@ -593,7 +593,7 @@ Session::Status Session::status() const {
         s.track_peak[i] = d->tracks[(size_t)i]->peak;
         s.track_has_clip[i] = cm >> i & 1; s.track_clip_rec[i] = rm >> i & 1;
         s.clipPos[i] = d->a_clipPos; s.lfoValue[i] = d->a_lfo[i];
-        s.voiceN[i] = std::min(kVoiceMax, d->a_voiceN[i].load()); for (int j = 0; j < s.voiceN[i]; j++) s.voicePos[i][j] = d->a_voicePos[i][j];
+        s.voiceN[i] = std::min(kVoiceMax, d->a_voiceN[i].load()); for (int j = 0; j < s.voiceN[i]; j++) { s.voicePos[i][j] = d->a_voicePos[i][j]; s.voiceLvl[i][j] = d->a_voiceLvl[i][j]; }
     }
     s.freeRecording = d->a_free; s.freeArmed = d->a_freeArmed; s.freeSeconds = d->a_freeSec;
     s.sampleState = d->a_sampleState; s.sampleTrack = d->a_sampleTrack; s.sampleSeconds = d->a_sampleSec; s.inputPeak = d->a_inPeak;

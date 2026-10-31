@@ -42,7 +42,7 @@ public:
     void noteOff(int note);
     void allOff();
     void render(float* out /*stereo, added*/, int n);
-    int voicePositions(float* out, int maxN) const;   // read positions 0..1 of the original sample
+    int voicePositions(float* out, int maxN, float* level = nullptr) const;   // read positions 0..1 of the original sample
     bool hasVoices() const;
 
 private:

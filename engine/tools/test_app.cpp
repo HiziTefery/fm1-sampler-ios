@@ -18,12 +18,19 @@ int main() {
     const int sr = SAMPLERATE;
     system("rm -rf /tmp/fm1sampler_t2; mkdir -p /tmp/fm1sampler_t2");
     Session s(sr); s.setDataDir("/tmp/fm1sampler_t2"); s.setSampleDir(std::string(getenv("HOME")) + "/fm1-sampler/samples");
-    SamplerApp app(s, [](const uint8_t*, size_t) {});
+    uint64_t ledMask = 0; int ledFrames = 0;   // the last LED frame the FM-1 got (SysEx 01)
+    SamplerApp app(s, [&](const uint8_t* m, size_t n) {   // frames come packed: F0 7D D A W 1 10 { len(2x7bit) cmd payload }... F7
+        if (n < 9 || m[6] != 10) return;
+        for (size_t i = 7; i + 3 < n;) { const size_t sub = (size_t)m[i] << 7 | m[i + 1]; if (sub < 1 || i + 2 + sub > n) break;
+            if (m[i + 2] == 1 && sub == 7) { ledMask = 0; for (int k = 0; k < 6; k++) ledMask |= (uint64_t)(m[i + 3 + k] & 127) << (7 * k); ledFrames++; }
+            i += 2 + sub; }
+    });
     std::vector<float> buf(512), in(512, 0.f), all; uint32_t now = 0;
     auto run = [&](double sec) { for (long i = 0; i < (long)(sec * sr) / 256; i++) { std::fill(buf.begin(), buf.end(), 0.f); s.process(buf.data(), in.data(), 256); std::this_thread::sleep_for(std::chrono::microseconds(200)); all.insert(all.end(), buf.begin(), buf.end()); if (i % 5 == 0) { now += 33; app.tick(now); } } };
     auto rmsFrom = [&](size_t from) { double a = 0; size_t n = 0; for (size_t i = from; i < all.size(); i++) { a += all[i] * all[i]; n++; } return n ? std::sqrt(a / n) : 0.0; };
     auto enc = [&](int i, int d) { uint8_t m[3] = {0xb0, (uint8_t)(16 + i), (uint8_t)(64 + d)}; app.onMidi(m, 3); };
     auto btn = [&](int b) { uint8_t m[3] = {0x91, (uint8_t)b, 100}; app.onMidi(m, 3); m[0] = 0x81; app.onMidi(m, 3); };
+    auto pageLed = [&](int b) { return (ledMask >> b & 1) != 0; };
     auto play = [&](int note, double sec) { size_t m = all.size(); app.playNote(note, true); run(sec); app.playNote(note, false); run(0.3); return rmsFrom(m); };
     run(2.5);
     CHECK(app.hasSample(0) && app.hasSample(1) && app.hasSample(2) && app.hasSample(3), "four default tracks load (%s, %s, %s, %s)", app.sampleLabel(0).c_str(), app.sampleLabel(1).c_str(), app.sampleLabel(2).c_str(), app.sampleLabel(3).c_str());
@@ -74,6 +81,10 @@ int main() {
     app.loopClear(); run(0.3);
     CHECK(!app.loopExists(), "PROJECT menu: clear all loops");
     { bool any = false; for (int t = 0; t < 8; t++) any |= app.status().track_has_clip[t]; CHECK(!any, "...and every other track's loop"); }
+    { constexpr int FXB = SamplerApp::FX, ENVB = SamplerApp::ENV;
+      btn(FXB); run(0.6); const bool fx1 = pageLed(FXB) && !pageLed(SamplerApp::HOME);
+      btn(ENVB); run(0.6); CHECK(fx1 && pageLed(ENVB) && !pageLed(FXB), "FM-1 LEDs: pressing another page button moves the light (ENV lit, FX dark)");
+      const int before = ledFrames; ledMask = 0; run(1.0); CHECK(ledFrames > before && pageLed(ENVB), "FM-1 LEDs are resent periodically (the firmware may clear them)"); }
     // microphone sample
     btn(SamplerApp::SAVE);
     enc(2, 1); run(0.3); CHECK(app.micState() == 1, "mic sampling waits for sound");
