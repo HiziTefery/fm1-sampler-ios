@@ -117,18 +117,15 @@ constexpr uint32_t kPanel = theme::argb(26, 26, 31), kPanelHi = theme::argb(52, 
     kPaper = theme::argb(237, 232, 218), kInk = theme::argb(28, 26, 30), kRed = theme::argb(206, 64, 44), kAmber = theme::argb(232, 163, 61);
 }
 
-// Tape pack of radius r with its winding rings, a white hub with six teeth turned by `ang`.
+// A tape roller: white hub with six teeth turned by `ang`.
 void SamplerUI::reel(float cx, float cy, float r, float ang) {
-    circle(cx, cy, r, kTape);
-    for (float rr = 22; rr < r - 1; rr += 4) stroke({cx - rr, cy - rr, 2 * rr, 2 * rr}, rr, rr < r - 5 ? theme::argb(70, 46, 32) : kTapeHi, 1);
-    stroke({cx - r, cy - r, 2 * r, 2 * r}, r, kTapeHi, 1.5f);
-    circle(cx, cy, 21, kReel);
-    circle(cx, cy, 15, kGlass);
+    circle(cx, cy, r, kReel);
+    circle(cx, cy, r - 6, kGlass);
     for (int k = 0; k < 6; k++) {
         const float a = ang + k * kPi / 3;
-        line(cx + 15 * std::cos(a), cy + 15 * std::sin(a), cx + 9 * std::cos(a), cy + 9 * std::sin(a), kReel, 3.5f);
+        line(cx + (r - 6) * std::cos(a), cy + (r - 6) * std::sin(a), cx + (r - 12) * std::cos(a), cy + (r - 12) * std::sin(a), kReel, 3.2f);
     }
-    circle(cx, cy, 3, kMetal);
+    circle(cx, cy, 2.5f, kMetal);
 }
 
 // Analogue VU meter: cream face, scale with a red end, needle at v (0..1).
@@ -181,7 +178,7 @@ void SamplerUI::cassette(Rect c) {
     stroke({c.x + 3, c.y + 3, c.w - 6, c.h - 6}, 11, kShellHi, 1);
     for (int i = 0; i < 4; i++) { const float sx = c.x + (i & 1 ? c.w - 12 : 12), sy = c.y + (i & 2 ? c.h - 12 : 12); circle(sx, sy, 4, kMetal); line(sx - 2.5f, sy - 2.5f, sx + 2.5f, sy + 2.5f, kShell, 1.2f); }
     // paper label
-    Rect lb{c.x + 24, c.y + 14, c.w - 48, c.h * 0.31f};
+    Rect lb{c.x + 24, c.y + 12, c.w - 48, 50};
     rrect(lb, 3, kPaper);
     rrect({lb.x, lb.y, lb.w, 8}, 0, kAmber); rrect({lb.x, lb.y + 8, lb.w, 3}, 0, kRed);
     std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "  " + SamplerApp::algoName(app_.algo());
@@ -191,12 +188,12 @@ void SamplerUI::cassette(Rect c) {
     else if (mic == 3) title = "SAVING";
     const std::string ts = app_.toast();
     if (!ts.empty()) sub = ts;
-    text(lb.x + 26, lb.y + 24, 8.5f, kInk, fit(sub, lb.w - 52, 8.5f), 0, true);
-    text(lb.x + 26, lb.y + 41, 16, kInk, fit(title, lb.w - 52, 16), 0, true);
-    for (int i = 0; i < 2; i++) line(lb.x + 26, lb.y + lb.h - 11 + i * 0.f - i * 7, lb.x + lb.w - 26, lb.y + lb.h - 11 - i * 7, theme::argb(170, 165, 150), 1);
+    text(lb.x + 26, lb.y + 20, 8.5f, kInk, fit(sub, lb.w - 130, 8.5f), 0, true);
+    text(lb.x + 26, lb.y + 35, 16, kInk, fit(title, lb.w - 52, 16), 0, true);
+    line(lb.x + 26, lb.y + lb.h - 5, lb.x + lb.w - 26, lb.y + lb.h - 5, theme::argb(170, 165, 150), 1);
     // library arrows on the label, tap the label for the list
-    tri(lb.x + 14, lb.y + 33, lb.x + 6, lb.y + 41, lb.x + 14, lb.y + 49, kInk);
-    tri(lb.x + lb.w - 14, lb.y + 33, lb.x + lb.w - 6, lb.y + 41, lb.x + lb.w - 14, lb.y + 49, kInk);
+    tri(lb.x + 14, lb.y + 26, lb.x + 6, lb.y + 34, lb.x + 14, lb.y + 42, kInk);
+    tri(lb.x + lb.w - 14, lb.y + 26, lb.x + lb.w - 6, lb.y + 34, lb.x + lb.w - 14, lb.y + 42, kInk);
     tap({lb.x + 26, lb.y, lb.w - 52, lb.h}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
     tap({lb.x, lb.y + 10, 26, lb.h - 10}, [this] { app_.browse(-1); });
     tap({lb.x + lb.w - 26, lb.y + 10, 26, lb.h - 10}, [this] { app_.browse(1); });
@@ -205,32 +202,46 @@ void SamplerUI::cassette(Rect c) {
     if (hasLoop) { lsec = (float)(st_.loopSamples / app_.session().sampleRate()); lp = loopPos(); psec = lp * lsec; }
     else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
     char cnt[48]; snprintf(cnt, sizeof cnt, "%d:%04.1f / %d:%04.1f", (int)psec / 60, std::fmod(psec, 60.f), (int)lsec / 60, std::fmod(lsec, 60.f));
-    text(lb.x + lb.w - 28, lb.y + 24, 9, kInk, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
-    if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + 40, lb.y + lb.h - 22, 4.5f, kRed); }
-    // window with the reels
-    Rect wd{c.x + c.w * 0.1f, lb.y + lb.h + 10, c.w * 0.8f, c.h - (lb.h + 14) - 10 - 44};
+    text(lb.x + lb.w - 28, lb.y + 20, 9, kInk, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
+    if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 18, lb.y + 36, 4.5f, kRed); }
+    // window: a tape LOOP. The tape is one closed ribbon around two rollers; it runs once round per loop and the splice shows where the loop starts.
+    Rect wd{c.x + c.w * 0.07f, lb.y + lb.h + 8, c.w * 0.86f, c.h - (lb.h + 12) - 8 - 32};
     rrect({wd.x - 2, wd.y - 2, wd.w + 4, wd.h + 4}, 13, kShellHi);
     rrect(wd, 12, kGlass);
-    const float cy = wd.y + wd.h / 2, rmax = wd.h / 2 - 2, rmin = 26;
-    float p = hasLoop ? lp : std::min(1.f, st_.freeSeconds / 60.f), ang = hasLoop ? -lp * 2 * kPi * 6 : st_.freeRecording ? -(float)now_ * 0.004f : 0.f;
-    if (!hasLoop && !st_.freeRecording) p = 0.5f;
-    const float rl = rmin + (rmax - rmin) * (1 - p), rr = rmin + (rmax - rmin) * p;
-    const float lx = wd.x + wd.w * 0.27f, rx = wd.x + wd.w * 0.73f;
+    const float cy = wd.y + wd.h / 2 - 2, rho = (wd.h - 18) / 2, rr = rho - 3;
+    const float cxL = wd.x + wd.w * 0.26f, cxR = wd.x + wd.w * 0.74f, L = cxR - cxL, arc = kPi * rho, per = 2 * L + 2 * arc;
+    float turn = hasLoop ? lp : st_.freeRecording ? std::fmod((float)now_ / 2500.f, 1.f) : 0.f;
+    auto at = [&](float sp, float& x, float& y, float& tx, float& ty) {   // point and direction at distance sp along the ribbon
+        sp = std::fmod(sp + per, per);
+        if (sp < L) { x = cxL + sp; y = cy + rho; tx = 1; ty = 0; }
+        else if (sp < L + arc) { const float f = (sp - L) / rho; x = cxR + rho * std::sin(f); y = cy + rho * std::cos(f); tx = std::cos(f); ty = -std::sin(f); }
+        else if (sp < 2 * L + arc) { x = cxR - (sp - L - arc); y = cy - rho; tx = -1; ty = 0; }
+        else { const float f = (sp - 2 * L - arc) / rho; x = cxL - rho * std::sin(f); y = cy - rho * std::cos(f); tx = -std::cos(f); ty = std::sin(f); }
+    };
     clip(wd);
-    reel(lx, cy, rl, ang); reel(rx, cy, rr, ang);
-    // tape: from the packs to the bottom guides, a sheen on the glass
-    line(lx - rl * 0.6f, cy + rl * 0.8f, wd.x + wd.w * 0.36f, wd.y + wd.h, kTape, 3);
-    line(rx + rr * 0.6f, cy + rr * 0.8f, wd.x + wd.w * 0.64f, wd.y + wd.h, kTape, 3);
-    tri(wd.x + wd.w * 0.5f, wd.y, wd.x + wd.w * 0.74f, wd.y, wd.x + wd.w * 0.30f, wd.y + wd.h, theme::withAlpha(0xffffff, 14));
+    reel(cxL, cy, rr, -turn * 2 * kPi * 4); reel(cxR, cy, rr, -turn * 2 * kPi * 4);
+    const int segs = 96;
+    float px, py2, ux, uy;
+    at(0, px, py2, ux, uy);
+    for (int i = 1; i <= segs; i++) { float x, y; at(per * i / segs, x, y, ux, uy); line(px, py2, x, y, kTape, 5); px = x; py2 = y; }
+    at(0, px, py2, ux, uy);
+    for (int i = 1; i <= segs; i++) { float x, y; at(per * i / segs, x, y, ux, uy); line(px, py2, x, y, kTapeHi, 1.2f); px = x; py2 = y; }
+    const int marks = 28;   // dust and oxide marks travelling with the tape; marks * spacing == the whole ribbon, so the wrap of one loop is seamless
+    for (int i = 0; i < marks; i++) { float x, y; at(turn * per + per * i / marks, x, y, ux, uy); line(x - ux * 2.5f, y - uy * 2.5f, x + ux * 2.5f, y + uy * 2.5f, theme::argb(40, 28, 20), 4); }
+    {   // the splice: a patch of lighter tape where the loop is joined (= position 0 of the loop)
+        float x, y; at(turn * per, x, y, ux, uy);
+        line(x - ux * 5, y - uy * 5, x + ux * 5, y + uy * 5, recNow ? kRed : kReel, 6);
+    }
+    // the head under the bottom run
+    rrect({(cxL + cxR) / 2 - 14, cy + rho + 3.5f, 28, 7}, 2, kMetal);
+    rrect({(cxL + cxR) / 2 - 5, cy + rho + 2.5f, 10, 3}, 1, hasLoop && st_.playing ? kAmber : kShellHi);
+    tri(wd.x + wd.w * 0.5f, wd.y, wd.x + wd.w * 0.74f, wd.y, wd.x + wd.w * 0.30f, wd.y + wd.h, theme::withAlpha(0xffffff, 12));
     endClip();
-    // head plate with rollers and the tape across the head
-    Rect pl{c.x + c.w * 0.2f, c.y + c.h - 38, c.w * 0.6f, 30};
+    // bottom guard of the cassette
+    Rect pl{c.x + c.w * 0.22f, c.y + c.h - 28, c.w * 0.56f, 20};
     rrect(pl, 7, kShellHi); rrect({pl.x + 2, pl.y + 2, pl.w - 4, pl.h - 4}, 6, kGlass);
-    const float ry = pl.y + 9;
-    line(pl.x + 14, ry, pl.x + pl.w - 14, ry, hasLoop && st_.playing ? kTapeHi : kTape, 3);
-    circle(pl.x + 14, ry, 5, kMetal); circle(pl.x + pl.w - 14, ry, 5, kMetal);
-    rrect({pl.x + pl.w / 2 - 12, pl.y + 3, 24, 9}, 2, kMetal);
-    circle(pl.x + pl.w / 2 - 20, pl.y + 21, 3, kShellHi); circle(pl.x + pl.w / 2 + 20, pl.y + 21, 3, kShellHi);
+    circle(pl.x + 14, pl.y + 10, 4, kMetal); circle(pl.x + pl.w - 14, pl.y + 10, 4, kMetal);
+    rrect({pl.x + pl.w / 2 - 12, pl.y + 5, 24, 9}, 2, kMetal);
 }
 
 float SamplerUI::loopPos() const {
@@ -246,14 +257,14 @@ void SamplerUI::timeline(Rect r) {
     const int t = app_.track();
     // the eight tracks as chips on the left
     for (int i = 0; i < 8; i++) {
-        Rect c{r.x + 4 + (i % 2) * 21.f, r.y + 4 + (i / 2) * 20.f, 19, 18};
+        const float chh = (r.h - 8 - 3 * 3) / 4; Rect c{r.x + 4 + (i % 2) * 22.f, r.y + 4 + (i / 2) * (chh + 3), 20, chh};
         const bool sel = i == t;
         rrect(c, 2, sel ? kAmber : kPanelHi);
-        text(c.x + 9.5f, c.y + 8, 9.5f, sel ? kInk : kPaper, std::to_string(i + 1), 1, true);
-        if (st_.track_clip_rec[i]) rrect({c.x + 3, c.y + 14, 13, 2}, 0, kRed); else if (st_.track_has_clip[i]) rrect({c.x + 3, c.y + 14, 13, 2}, 0, sel ? kInk : kAmber);
+        text(c.x + 10, c.y + chh / 2 - 2, 10.5f, sel ? kInk : kPaper, std::to_string(i + 1), 1, true);
+        if (st_.track_clip_rec[i]) rrect({c.x + 4, c.y + chh - 6, 12, 2}, 0, kRed); else if (st_.track_has_clip[i]) rrect({c.x + 4, c.y + chh - 6, 12, 2}, 0, sel ? kInk : kAmber);
         tap({c.x - 1, c.y - 1, c.w + 2, c.h + 2}, [this, i] { app_.selectTrack(i); });
     }
-    const float tx = r.x + 52, tw = r.w - 52 - 6, rh = 25, wy = r.y + rh + 3, wh = r.h - rh - 6;
+    const float tx = r.x + 54, tw = r.w - 54 - 6, rh = 28, wy = r.y + rh + 3, wh = r.h - rh - 6;
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const float sr = (float)app_.session().sampleRate(), loopSec = hasLoop ? (float)(st_.loopSamples / sr) : 0.f;
     rrect({tx, r.y + 3, tw, rh}, 2, kPanel);
@@ -325,16 +336,16 @@ void SamplerUI::deck(Rect r) {
     circle(W_ - 24, 18, 4, linkMidi_ && linkAudio_ ? kReel : linkMidi_ ? kAmber : kShellHi);
     text(W_ - 34, 18, 9.5f, kMetal, std::string(linkMidi_ ? "FM-1  " : "NO FM-1  ") + "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, true);
     // centre: the cassette, VU needles and knobs on both sides
-    const float top = 34, ch = 214, cw = std::min(ch * 1.6f, W_ * 0.42f);
+    const float top = 34, ch = 176, cw = std::min(ch * 1.75f, W_ * 0.42f);
     const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
     // right side: the VU needles (master, selected track), the selected page and its four knobs in a line
     auto smooth = [](float& vu, float peak) { const float db = peak > 1e-4f ? 20 * std::log10(peak) : -80.f; const float t = clamp01((db + 38.f) / 41.f); vu += (t - vu) * (t > vu ? 0.55f : 0.14f); return vu; };
     const float vl = smooth(vu_[0], st_.master_peak), vr = smooth(vu_[1], st_.track_peak[app_.track()]);
-    const float vw = (w0 - 14) / 2, vh = 72;
+    const float vw = (w0 - 14) / 2, vh = 56;
     vu({x0, top + 4, vw, vh}, vl, "MASTER");
     vu({x0 + vw + 14, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
-    const float py = top + vh + 28;
+    const float py = top + vh + 24;
     text(x0, py, 9, kMetal, "PAGE", 0, true);
     text(x0 + 36, py, 15, kAmber, SamplerApp::pageName(app_.page()), 0, true);
     for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
@@ -342,10 +353,10 @@ void SamplerUI::deck(Rect r) {
         rrect({nr.x + 3, py - 3, 16, 6}, 1, kTabs[i] == app_.page() ? kAmber : kPanelHi);
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
-    const float ky = py + 52;
+    const float ky = py + 46;
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, ky, app_.page(), i);
     // the loops
-    timeline({24, top + ch + 16, W_ - 48, 84});
+    timeline({24, top + ch + 16, W_ - 48, H_ - 46 - 8 - (top + ch + 16)});
     // transport keys
     const float ty = H_ - 46, kw = std::min(84.f, (W_ - 60) / 9.f), gap = 6;
     struct K { const char* l; int icon; bool on; std::function<void()> f; };
