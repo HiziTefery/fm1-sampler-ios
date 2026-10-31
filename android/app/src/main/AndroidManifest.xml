@@ -4,6 +4,7 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
     <application android:label="FM1 Sampler" android:theme="@android:style/Theme.Material.Light">
         <activity android:name=".SamplerActivity" android:exported="true" android:screenOrientation="sensorLandscape"
+                  android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density"
                   android:theme="@android:style/Theme.Material.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

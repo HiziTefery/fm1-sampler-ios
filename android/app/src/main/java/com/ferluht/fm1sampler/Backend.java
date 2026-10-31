@@ -56,22 +56,29 @@ public class Backend {
         startAudio();
         if (midi != null) {
             midi.registerDeviceCallback(new MidiManager.DeviceCallback() {
-                @Override public void onDeviceAdded(MidiDeviceInfo i) { connectMidi(); }
-                @Override public void onDeviceRemoved(MidiDeviceInfo i) { disconnectMidi(); connectMidi(); }
+                @Override public void onDeviceAdded(MidiDeviceInfo i) { try { connectMidi(); } catch (Throwable t) { Log.w(TAG, "midi add: " + t); } }
+                @Override public void onDeviceRemoved(MidiDeviceInfo i) { try { disconnectMidi(); connectMidi(); } catch (Throwable t) { Log.w(TAG, "midi remove: " + t); } }
             }, main);
             connectMidi();
         }
         am.registerAudioDeviceCallback(new AudioDeviceCallback() {
-            @Override public void onAudioDevicesAdded(AudioDeviceInfo[] a) { restartAudioIfUsbChanged(); if (micWanted && !micStarted) startMic(); }
-            @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] a) { restartAudioIfUsbChanged(); }
+            @Override public void onAudioDevicesAdded(AudioDeviceInfo[] a) { try { restartAudioIfUsbChanged(); if (micWanted && !micStarted) startMic(); } catch (Throwable t) { Log.w(TAG, "audio add: " + t); } }
+            @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] a) { try { restartAudioIfUsbChanged(); } catch (Throwable t) { Log.w(TAG, "audio remove: " + t); } }
         }, main);
         ticker = new Thread(() -> {
             long t0 = SystemClock.uptimeMillis();
+            long lastRestart = 0;
             while (running) {
-                byte[] out = Native.tick(engine, SystemClock.uptimeMillis() - t0);
-                send(out);
-                Native.uiLink(engine, toFm1 != null, usbAudioId != 0);
-                if (Native.wantFile(engine)) { Runnable r = onFileRequest; if (r != null) main.post(r); }
+                try {
+                    byte[] out = Native.tick(engine, SystemClock.uptimeMillis() - t0);
+                    send(out);
+                    Native.uiLink(engine, toFm1 != null, usbAudioId != 0);
+                    if (Native.wantFile(engine)) { Runnable r = onFileRequest; if (r != null) main.post(r); }
+                    if (Native.audioDead(engine) && SystemClock.uptimeMillis() - lastRestart > 700) {   // the system closed the stream (USB plugged / unplugged)
+                        lastRestart = SystemClock.uptimeMillis();
+                        main.postDelayed(() -> { if (running) startAudio(); }, 300);
+                    }
+                } catch (Throwable t) { Log.w(TAG, "tick: " + t); }
                 try { Thread.sleep(16); } catch (InterruptedException ignored) { }
             }
         }, "fm1-surface");
@@ -114,25 +121,31 @@ public class Backend {
     }
 
     // ---- MIDI ----
+    boolean connecting;
     synchronized void connectMidi() {
-        if (toFm1 != null || midi == null) return;
+        if (toFm1 != null || midi == null || connecting) return;
         MidiDeviceInfo pick = null;
         for (MidiDeviceInfo i : midi.getDevices()) {
             String n = String.valueOf(i.getProperties().getString(MidiDeviceInfo.PROPERTY_NAME)).toLowerCase();
             if (n.contains("fm") || n.contains("m-vave") || n.contains("mvave")) pick = i;
         }
         if (pick == null) return;
+        connecting = true;   // openDevice is asynchronous and the device callback fires once per port: open it once
         midi.openDevice(pick, d -> {
-            if (d == null) return;
             synchronized (Backend.this) {
-                device = d;
-                toFm1 = d.openInputPort(0);
-                fromFm1 = d.openOutputPort(0);
-                if (fromFm1 != null) fromFm1.connect(new MidiReceiver() {
-                    @Override public void onSend(byte[] data, int off, int count, long ts) { Native.midiIn(engine, data, off, count); }
-                });
+                connecting = false;
+                if (d == null || toFm1 != null) { if (d != null) try { d.close(); } catch (Exception ignored) { } return; }
+                try {
+                    MidiInputPort in = d.openInputPort(0);
+                    MidiOutputPort outp = d.openOutputPort(0);
+                    if (in == null) { d.close(); return; }
+                    device = d; fromFm1 = outp; toFm1 = in;
+                    if (outp != null) outp.connect(new MidiReceiver() {
+                        @Override public void onSend(byte[] data, int off, int count, long ts) { try { Native.midiIn(engine, data, off, count); } catch (Throwable t) { Log.w(TAG, "midiIn: " + t); } }
+                    });
+                    Log.i(TAG, "FM-1 MIDI connected");
+                } catch (Throwable t) { Log.w(TAG, "open ports: " + t); }
             }
-            Log.i(TAG, "FM-1 MIDI connected");
         }, main);
     }
     synchronized void disconnectMidi() {

@@ -8,6 +8,7 @@ public final class Native {
     public static native int startAudio(long h, int deviceId);
     public static native int startInput(long h, int deviceId);
     public static native void stopAudio(long h);
+    public static native boolean audioDead(long h);
     public static native int xruns(long h);
     public static native void midiIn(long h, byte[] data, int off, int n);
     public static native byte[] tick(long h, long nowMs);

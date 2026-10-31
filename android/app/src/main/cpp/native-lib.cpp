@@ -2,6 +2,7 @@
 #include <jni.h>
 #include <oboe/Oboe.h>
 #include <android/log.h>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -21,8 +22,11 @@ struct Engine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamEr
     std::unique_ptr<SamplerApp> app;
     std::unique_ptr<SamplerUI> ui;
     std::vector<uint8_t> sx; bool inSx = false;
+    uint8_t msg[3] = {0, 0, 0}; int msgLen = 0, msgNeed = 3;   // channel message being assembled
     std::shared_ptr<oboe::AudioStream> stream;
     std::atomic<int> xruns{0};
+    std::mutex streamMtx;               // start() / stop() / startInput() never run at the same time
+    std::atomic<bool> streamDead{false};   // the output stream was torn down by the system (USB plugged / unplugged): Java restarts it
     int deviceId = 0;
     std::shared_ptr<oboe::AudioStream> inStream;
     std::vector<float> inMono = std::vector<float>(8192), inStereo = std::vector<float>(16384);
@@ -45,19 +49,30 @@ struct Engine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamEr
         return oboe::DataCallbackResult::Continue;
     }
     bool onError(oboe::AudioStream*, oboe::Result r) override { LOG("stream error %d", (int)r); return false; }
-    void onErrorAfterClose(oboe::AudioStream*, oboe::Result r) override { LOG("stream closed: %s, restarting", oboe::convertToText(r)); start(deviceId); }
+    // Runs on a thread of Oboe's, often while Java is already restarting the stream for the same USB event: only note it, Java restarts on its own thread.
+    void onErrorAfterClose(oboe::AudioStream* s, oboe::Result r) override { LOG("stream closed: %s", oboe::convertToText(r)); if (s == streamRaw.load()) streamDead = true; }
+    std::atomic<oboe::AudioStream*> streamRaw{nullptr};
 
     int start(int dev) {
+        std::lock_guard<std::mutex> lk(streamMtx);
         deviceId = dev;
+        streamDead = false; streamRaw = nullptr;
         if (stream) { stream->close(); stream.reset(); }
-        oboe::AudioStreamBuilder b;
-        b.setDirection(oboe::Direction::Output)->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)->setFormat(oboe::AudioFormat::Float)->setChannelCount(2)
-            ->setSampleRate(44100)->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
-            ->setUsage(oboe::Usage::Media)->setDataCallback(this)->setErrorCallback(this);
-        if (dev) b.setDeviceId(dev);
-        oboe::Result r = b.openStream(stream);
-        if (r != oboe::Result::OK) { LOG("open failed: %s", oboe::convertToText(r)); return -1; }
+        oboe::Result r = oboe::Result::ErrorInternal;
+        for (int attempt = 0; attempt < 3; attempt++) {   // exclusive low latency first, then shared, then without the device id
+            oboe::AudioStreamBuilder b;
+            b.setDirection(oboe::Direction::Output)->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+                ->setSharingMode(attempt == 0 ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)->setFormat(oboe::AudioFormat::Float)->setChannelCount(2)
+                ->setSampleRate(44100)->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+                ->setUsage(oboe::Usage::Media)->setDataCallback(this)->setErrorCallback(this);
+            if (dev && attempt < 2) b.setDeviceId(dev);
+            r = b.openStream(stream);
+            if (r == oboe::Result::OK) break;
+            LOG("open failed (attempt %d): %s", attempt, oboe::convertToText(r));
+            stream.reset();
+        }
+        if (r != oboe::Result::OK) return -1;
+        streamRaw = stream.get();
         stream->setBufferSizeInFrames(stream->getFramesPerBurst() * 2);
         r = stream->requestStart();
         LOG("stream started: rate %d burst %d buffer %d sharing %d perf %d dev %d", stream->getSampleRate(), stream->getFramesPerBurst(),
@@ -65,6 +80,7 @@ struct Engine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamEr
         return r == oboe::Result::OK ? 0 : -2;
     }
     int startInput(int dev) {
+        std::lock_guard<std::mutex> lk(streamMtx);
         if (inStream) return 0;
         // Phones differ in what they accept: try the clean low-latency setup first, then relax step by step.
         struct Try { bool lowLatency, unprocessed, withDev, withRate; };
@@ -89,6 +105,8 @@ struct Engine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamEr
         return -1;
     }
     void stop() {
+        std::lock_guard<std::mutex> lk(streamMtx);
+        streamRaw = nullptr;
         if (inStream) { inStream->stop(); inStream->close(); inStream.reset(); } if (stream) { stream->stop(); stream->close(); stream.reset(); } }
 };
 Engine* E(jlong h) { return reinterpret_cast<Engine*>(h); }
@@ -107,22 +125,31 @@ FN(void, destroy)(JNIEnv*, jclass, jlong h) { E(h)->stop(); delete E(h); }
 FN(jint, startAudio)(JNIEnv*, jclass, jlong h, jint dev) { return E(h)->start(dev); }
 FN(jint, startInput)(JNIEnv*, jclass, jlong h, jint dev) { return E(h)->startInput(dev); }
 FN(void, stopAudio)(JNIEnv*, jclass, jlong h) { E(h)->stop(); }
+// 1 once when the system closed the output stream under us (the device list changed)
+FN(jboolean, audioDead)(JNIEnv*, jclass, jlong h) { return E(h)->streamDead.exchange(false); }
 FN(jint, xruns)(JNIEnv*, jclass, jlong h) { auto& e = *E(h); return e.stream ? e.stream->getXRunCount().value() : -1; }
 
 FN(void, midiIn)(JNIEnv* env, jclass, jlong h, jbyteArray a, jint off, jint n) {
+    if (!a || off < 0 || n <= 0 || off + n > env->GetArrayLength(a)) return;
     jbyte* d = env->GetByteArrayElements(a, nullptr);
+    if (!d) return;
     auto& e = *E(h);
     std::lock_guard<std::mutex> l(e.surfaceMtx);
-    for (int i = off; i < off + n;) {
-        uint8_t s = (uint8_t)d[i];
+    for (int i = off; i < off + n; i++) {
+        const uint8_t s = (uint8_t)d[i];
+        if (s >= 0xf8) continue;                        // real time (clock, active sensing): may come anywhere, even inside a SysEx
         if (e.inSx) {                                   // SysEx from the FM-1 (scale state, redraw request), may span calls
-            e.sx.push_back(s); i++;
+            if (s >= 0x80 && s != 0xf7) { e.inSx = false; i--; continue; }   // anything else that starts a message ends a broken SysEx
+            if (e.sx.size() < 256) e.sx.push_back(s);
             if (s == 0xf7) { e.inSx = false; e.app->onSysex(e.sx.data(), e.sx.size()); }
             continue;
         }
-        if (s == 0xf0) { e.inSx = true; e.sx.assign(1, s); i++; continue; }
-        if (s >= 0x80 && i + 2 < off + n) { e.app->onMidi((const uint8_t*)d + i, 3); i += 3; }
-        else i++;
+        if (s == 0xf0) { e.inSx = true; e.sx.assign(1, s); e.msgLen = 0; continue; }
+        if (s >= 0xf0) { e.msgLen = 0; continue; }
+        if (s >= 0x80) { e.msg[0] = s; e.msgLen = 1; e.msgNeed = ((s & 0xf0) == 0xc0 || (s & 0xf0) == 0xd0) ? 2 : 3; continue; }
+        if (e.msgLen == 0) continue;                    // a data byte without a status
+        e.msg[e.msgLen++] = s;
+        if (e.msgLen == e.msgNeed) { if (e.msgNeed == 3) e.app->onMidi(e.msg, 3); e.msgLen = 1; }   // running status: the status stays
     }
     env->ReleaseByteArrayElements(a, d, JNI_ABORT);
 }
