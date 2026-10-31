@@ -129,8 +129,25 @@ void SamplerUI::sampleView(Rect r) {
     const auto ts = app_.state(t);
     text(r.x, r.y + 8, 11, kPaper, SamplerApp::algoName(ts.algo), 0, true);
     tap({r.x, r.y, 120, 18}, [this, ts] { app_.setAlgo((ts.algo + 1) % 6); });   // tap the mode: the next one
+    {   // microphone, disk and library as pictograms
+        const float bw = 34, bh = 22, by = r.y - 2, bx = r.x + r.w - 3 * bw;
+        const int ms = app_.micState();
+        const uint32_t mc = ms == 1 || ms == 2 ? kOrange : kPaper;
+        const float mx = bx + bw / 2, my = by + bh / 2;   // microphone
+        rrect({mx - 3, my - 9, 6, 10}, 3, mc);
+        const float u[][2] = {{-6, -3}, {-6, 0}, {-4, 3}, {0, 4}, {4, 3}, {6, 0}, {6, -3}};
+        for (int i = 0; i < 6; i++) line(mx + u[i][0], my + u[i][1], mx + u[i + 1][0], my + u[i + 1][1], mc, 1.6f);
+        line(mx, my + 4, mx, my + 8, mc, 1.6f); line(mx - 3, my + 8, mx + 3, my + 8, mc, 1.6f);
+        tap({bx, by, bw, bh}, [this] { app_.micSample(); });
+        const float fx = bx + bw * 1.5f, fy = by + bh / 2;   // folder: a file from the disk
+        rrect({fx - 8, fy - 6, 7, 4}, 1, kPaper); rrect({fx - 8, fy - 3, 16, 11}, 2, kPaper);
+        tap({bx + bw, by, bw, bh}, [this] { app_.requestFile(); });
+        const float lx = bx + bw * 2.5f, ly = by + bh / 2;   // library: books on a shelf
+        rrect({lx - 8, ly - 5, 4, 12}, 0, kPaper); rrect({lx - 2, ly - 8, 4, 15}, 0, kPaper); rrect({lx + 4, ly - 6, 4, 13}, 0, kPaper);
+        tap({bx + 2 * bw, by, bw, bh}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+    }
     const int nv = st_.voiceN[t];
-    if (nv > 0) text(r.x + r.w, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
+    if (nv > 0) text(r.x + r.w - 3 * 34 - 8, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
     const Rect w{r.x, r.y + 20, r.w, r.h - 20};
     const int bins = std::max(20, (int)(w.w / 2.5f));
     auto pk = app_.peaks(t, bins);
@@ -169,7 +186,7 @@ void SamplerUI::cassette(Rect c) {
     const bool recNow = st_.freeRecording || st_.track_clip_rec[t];
     const int mic = app_.micState();
     // label: paper strip with a coloured edge, the sample name, the counter
-    Rect lb{c.x + 24, c.y + 12, c.w - 48, 50};
+    Rect lb{c.x + 4, c.y + 12, c.w - 8, 50};
     std::string title = app_.sampleLabel(t), sub;
     if (title.empty()) title = "EMPTY TRACK";
     if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
@@ -193,7 +210,7 @@ void SamplerUI::cassette(Rect c) {
     text(lb.x + lb.w - 22, lb.y + 14, 9, kPaper, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
     if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 14, lb.y + 33, 4.5f, kOrange); }
     // the tape loop: one closed ribbon round two rollers; it runs once round per loop, the orange dot is the splice = the start of the loop
-    Rect wd{c.x + c.w * 0.07f, lb.y + lb.h + 8, c.w * 0.86f, c.h - (lb.h + 12) - 8 - 32 + 14};
+    Rect wd{c.x + c.w * 0.02f, lb.y + lb.h + 8, c.w * 0.96f, c.h - (lb.h + 12) - 8 - 32 + 14};
     // The ribbon runs over two wheels (a big and a small one) and one roller inside the loop that pushes it out into a bend.
     // Between two posts it is a common tangent, round a post an arc: the path is built from those.
     struct Post { float x, y, r; int s; };   // s = -1: the post is inside the ribbon (it wraps round it), +1: outside
@@ -305,6 +322,7 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
     if (icon == 1) tri(cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, ink);
     else if (icon == 2) { rrect({cx - 6, cy - 7, 4.5f, 14}, 0, ink); rrect({cx + 2, cy - 7, 4.5f, 14}, 0, ink); }
     else if (icon == 3) circle(cx, cy, 6.5f, kOrange);
+    else if (icon == 4) rrect({cx - 6, cy - 6, 12, 12}, 1, ink);
     text(cx, icon ? r.y + r.h - 9 : r.y + r.h / 2, 9, ink, label, 1, true);
     tap(r, std::move(f));
 }
@@ -312,8 +330,8 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
 void SamplerUI::deck(Rect r) {
     rrect({0, 0, W_, H_}, 0, kBg);
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
-    const float top = 12, ch = 192, cw = std::min(ch * 1.75f, W_ * 0.42f);
-    const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
+    const float top = 12, ch = 170, cw = std::min(ch * 1.75f, W_ * 0.42f);
+    const float cxl = 10, zr = W_ - 20, x0 = cxl + cw + 24, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
     const float vh = 78;
     sampleView({x0, top + 2, w0, vh});
@@ -325,27 +343,16 @@ void SamplerUI::deck(Rect r) {
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);
-    const float ty = H_ - 46;
-    timeline({24, top + ch + 16, W_ - 48, ty - 8 - (top + ch + 16)});
-    struct K { const char* l; int icon; bool on; std::function<void()> f; };
-    const int ms = app_.micState();
-    static const char* micLab[] = {"MIC", "WAITING", "STOP MIC", "SAVING"};
-    const float kw = std::min(84.f, (W_ - 60) / 9.f), gap = 6;
-    std::vector<K> ks = {
-        {st_.playing ? "PAUSE" : "PLAY", st_.playing ? 2 : 1, st_.playing, [this] { app_.transportPlay(); }},
-        {app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }},
-        {micLab[ms], 0, ms == 2, [this] { app_.micSample(); }},
-        {"FILE", 0, false, [this] { app_.requestFile(); }},
-        {"LIBRARY", 0, false, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); }},
-        {"PROJECT", 0, projectOpen_, [this] { projectOpen_ = true; clearArmed_ = 0; }},
-        {"EDIT", 0, false, [this] { editor_ = true; }},
-    };
-    const float total = ks.size() * kw + (ks.size() - 1) * gap;
-    for (size_t i = 0; i < ks.size(); i++) {
-        Rect kr{(W_ - total) / 2 + i * (kw + gap), ty, kw, 36};
-        key(kr, ks[i].l, ks[i].icon, ks[i].on, ks[i].f, false);
-        if (i == 1 && armed && (now_ / 400) % 2 == 0) rrect({kr.x, kr.y + kr.h - 3, kr.w, 3}, 0, kOrange);
-    }
+    // transport under the cassette: PLAY, STOP, REC / OVERDUB; PROJECT and EDIT at the right end of the same row
+    const float ty = 200, kh = 36, tg = 6, tkw = (cw - 2 * tg) / 3;
+    key({cxl, ty, tkw, kh}, "PLAY", 1, st_.playing, [this] { app_.transportSet(true); }, false);
+    key({cxl + tkw + tg, ty, tkw, kh}, "STOP", 4, false, [this] { app_.transportSet(false); }, false);
+    key({cxl + 2 * (tkw + tg), ty, tkw, kh}, app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }, false);
+    if (armed && (now_ / 400) % 2 == 0) rrect({cxl + 2 * (tkw + tg), ty + kh - 3, tkw, 3}, 0, kOrange);
+    key({zr - 2 * 90 - tg, ty, 90, kh}, "PROJECT", 0, projectOpen_, [this] { projectOpen_ = true; clearArmed_ = 0; }, false);
+    key({zr - 90, ty, 90, kh}, "EDIT", 0, false, [this] { editor_ = true; }, false);
+    const float tl = ty + kh + 10;
+    timeline({12, tl, W_ - 24, H_ - 12 - tl});
 }
 
 void SamplerUI::trackList(Rect r) {

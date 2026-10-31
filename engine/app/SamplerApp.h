@@ -61,6 +61,7 @@ public:
     void requestFile() { wantFile_ = true; }
     // looper and recorder
     void transportPlay();
+    void transportSet(bool play) { s_.play(play); }   // phone PLAY / STOP keys
     void loopRecord();                            // REC: arm / end the first take, or toggle overdub once a loop exists
     void lenAction(bool dbl);
     void seek(float fraction) { s_.seek(fraction); }   // phone timeline: scrub the playhead
