@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     btn(SamplerApp::REC); run(300); snap("loop_playing");
     btn(SamplerApp::SEL); enc(2, 1); run(200); snap("len_x2"); enc(2, -1); run(400);
     btn(SamplerApp::REC); run(100); note(55, true); run(300); note(55, false); run(1200); btn(SamplerApp::REC); snap("overdub");
-    { uint8_t m[3] = {0x91, (uint8_t)SamplerApp::SAVE, 100}; app.onMidi(m, 3); m[0] = 0x81; app.onMidi(m, 3); } run(500); snap("saved");
+    app.loopSave(); run(500); snap("saved");
     enc(6, 1); // library has the saved loop now
     // key / GLO
     btn(SamplerApp::GLO); enc(2, 2); enc(3, 3); snap("key");

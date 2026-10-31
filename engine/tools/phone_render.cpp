@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
     auto tab = [&](int i) { tapAt(rx + (i % 5) * (tw + 4) + tw / 2, 44 + 8 + (i / 5) * 32 + 14); };
     ui.frame(now); dump("deck");
     app.selectTrack(1); run(0.3); ui.frame(now); dump("deck_track2"); app.selectTrack(0);
+    ui.openProject(true); ui.frame(now); dump("deck_project"); ui.openProject(false);
     ui.setEditor(true);
     ui.frame(now); dump("sample");
     tab(1); ui.frame(now); dump("fx");

@@ -60,6 +60,7 @@ void SamplerUI::frame(uint32_t now) {
     if (!editor_) {   // the cassette deck fills the screen; the old sample / page editor stays one tap away (EDIT)
         deck({0, 0, W_, H_});
         if (sheetOpen_) librarySheet();
+        if (projectOpen_) projectSheet();
         return;
     }
     topBar({0, 0, W_, tb});
@@ -330,11 +331,10 @@ void SamplerUI::deck(Rect r) {
     std::vector<K> ks = {
         {st_.playing ? "PAUSE" : "PLAY", st_.playing ? 2 : 1, st_.playing, [this] { app_.transportPlay(); }},
         {app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }},
-        {"SAVE", 0, false, [this] { app_.loopSave(); }},
-        {"CLEAR", 4, false, [this] { app_.loopClear(); }},
         {micLab[ms], 0, ms == 2, [this] { app_.micSample(); }},
         {"FILE", 0, false, [this] { app_.requestFile(); }},
         {"LIBRARY", 0, false, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); }},
+        {"PROJECT", 0, projectOpen_, [this] { projectOpen_ = true; clearArmed_ = 0; }},
         {"EDIT", 0, false, [this] { editor_ = true; }},
     };
     const float total = ks.size() * kw + (ks.size() - 1) * gap;
@@ -531,4 +531,40 @@ void SamplerUI::librarySheet() {
             const int idx = (int)((sheetLastY_ - sheetList_.y + sheetScroll_) / rh);
             if (idx >= 0 && idx < (int)rows.size() && !rows[(size_t)idx].head) { app_.loadEntry(rows[(size_t)idx].entry); sheetOpen_ = false; }
         });
+}
+
+// PROJECT menu: what used to be the SAVE / CLEAR buttons of the FM-1 (and more) on the screen.
+void SamplerUI::projectSheet() {
+    rrect({0, 0, W_, H_}, 0, theme::withAlpha(0xff000000, 200));
+    tap({0, 0, W_, H_}, [this] { projectOpen_ = false; });
+    const float bw = std::min(460.f, W_ - 40), bh = 38, gap = 8;
+    const int t = app_.track();
+    const bool hasClip = st_.track_has_clip[t], any = app_.loopExists();
+    const Rect box{(W_ - bw) / 2, 22, bw, H_ - 44};
+    rrect(box, 8, kShell); stroke(box, 8, kMetal, 1.5f);
+    tap(box, [] {});
+    text(box.x + 18, box.y + 22, 15, kAmber, "PROJECT", 0, true);
+    key({box.x + box.w - 84, box.y + 8, 72, 30}, "CLOSE", 0, false, [this] { projectOpen_ = false; }, false);
+    const std::string ts = app_.toast();
+    text(box.x + 18, box.y + 48, 10, kPaper, !ts.empty() ? ts : app_.loopText(), 0, true);
+    float y = box.y + 66;
+    auto row = [&](const std::string& label, const std::string& hint, bool enabled, bool hot, std::function<void()> f) {
+        Rect r{box.x + 18, y, box.w - 36, bh};
+        rrect(r, 5, hot ? kRed : kPanelHi);
+        text(r.x + 14, r.y + bh / 2 - 6, 11.5f, enabled ? kPaper : kMetal, label, 0, true);
+        text(r.x + 14, r.y + bh / 2 + 9, 8.5f, enabled ? theme::argb(190, 188, 180) : theme::argb(100, 98, 94), hint, 0, false);
+        tap(r, std::move(f));
+        y += bh + gap;
+    };
+    const std::string tn = "TRACK " + std::to_string(t + 1);
+    row("SAVE LOOP OF " + tn, "into the sample library (USER)", hasClip, false, [this] { app_.loopSave(); });
+    row("CLEAR LOOP OF " + tn, "the other tracks keep theirs", hasClip, false, [this] { app_.loopClearTrack(); });
+    const bool armed = clearArmed_ && now_ < clearArmed_;
+    row(armed ? "TAP AGAIN: CLEAR ALL LOOPS" : "CLEAR ALL LOOPS", "the looper is clean again, loop length is free", any, armed, [this, armed] {
+        if (armed) { app_.loopClear(); clearArmed_ = 0; } else clearArmed_ = now_ + 3000;
+    });
+    row("LOOP LENGTH x2", "the loop doubled, its content repeated", any, false, [this] { app_.lenAction(true); });
+    row("LOOP LENGTH /2", "half as long, the second half is dropped", any, false, [this] { app_.lenAction(false); });
+    row(std::string("LOOP SOURCE: ") + app_.knobs(SamplerApp::P_SAVE)[1].value, "what a take records: the track's sound or the microphone", true, false,
+        [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
 }

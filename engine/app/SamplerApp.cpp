@@ -246,8 +246,6 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
         m.set = [this](float v) { if ((v > 0.5f) == (mic_ == 0)) micSample(); };
         k[0] = m;
         k[1] = choice("LOOP SOURCE", &loopSrc_, {"MIC", "SOUND"}, [this] { s_.setLoopSource(loopSrc_); });
-        Knob sv; sv.name = "SAVE LOOP"; sv.valid = true; sv.isChoice = true; sv.value = st_.track_has_clip[track_] ? "TURN" : "EMPTY"; sv.step = [this](int) { loopSave(); }; sv.set = [this](float) { loopSave(); };
-        k[2] = sv;
         k[3] = cont("MIC THRESHOLD", &micThr_, [](float v) { return fmt("%.0f DB", 20 * std::log10(micThrOf(v))); }, [this] { s_.setMicThreshold(micThrOf(micThr_)); }, 0.02f);
         break;
     }
@@ -301,7 +299,12 @@ void SamplerApp::loopSave() {
     commitAt_ = nowMs_ + 1;   // refresh the library shortly, once the file is written
     commitTrack_ = -2;
 }
-void SamplerApp::loopClear() {   // SAVE held / CLEAR: every loop of every track, so the looper is clean again
+void SamplerApp::loopClearTrack() {
+    if (!st_.track_has_clip[track_]) { say("NO LOOP ON THIS TRACK"); return; }
+    s_.clipClear(track_);
+    say("LOOP OF TRACK " + std::to_string(track_ + 1) + " CLEARED");
+}
+void SamplerApp::loopClear() {   // PROJECT menu: every loop of every track, so the looper is clean again
     s_.clipClearAll();
     say("ALL LOOPS CLEARED");
 }
@@ -381,9 +384,8 @@ void SamplerApp::onSysex(const uint8_t* m, size_t n) {
 }
 void SamplerApp::button(int b, bool down) {
     if (down) held_ |= 1u << b; else held_ &= ~(1u << b);
-    if (b == SAVE) {   // tap = save the loop, hold = clear it
-        if (down) { saveDownAt_ = nowMs_ ? nowMs_ : 1; saveHeld_ = true; saveHoldDone_ = false; page_ = P_SAVE; }
-        else { saveHeld_ = false; if (!saveHoldDone_) loopSave(); }
+    if (b == SAVE) {   // only the LOOP page: saving and clearing loops lives in the phone's PROJECT menu
+        if (down) page_ = P_SAVE;
         return;
     }
     if (!down) return;
@@ -423,7 +425,6 @@ void SamplerApp::tick(uint32_t now) {
     for (int t = 0; t < kTracks; t++) loopAny_ |= st_.track_has_clip[t];
     if (now - lastLoss_ > 4000 && now - lastRaise_ > 2000 && gap_ > 16) { gap_ = std::max<uint32_t>(16, gap_ * 9 / 10); lastRaise_ = now; }
     if (now - lastPing_ >= 500) { lastPing_ = now; pingId_ = (pingId_ + 1) & 0x3fff; sysex(5, n14(pingId_)); }
-    if (saveHeld_ && !saveHoldDone_ && now - saveDownAt_ > 700) { saveHoldDone_ = true; loopClear(); }
     // audition: the cursor rested, load the entry on the selected track and play it
     if (auditionAt_ && now >= auditionAt_) loadEntry(libCursor_);
     if (st_.sampleVersion != lastSampleVersion_) {   // a sample landed on a track: give it this track's settings
@@ -589,7 +590,7 @@ void SamplerApp::draw(uint32_t now) {
         rects_[70 + i] = ~0ull;
         rect(70 + i, cx, cy + 29, bw, 4, p.isChoice ? ACCENT : PAPER);
     }
-    const char* hint = mic_ == 1 ? (page_ == P_SAVE ? "K4 = TRIGGER LEVEL  LINE = THRESHOLD" : "K1 = TRIGGER LEVEL  LINE = THRESHOLD") : mic_ == 2 ? "RECORDING  K1 ON LOOP PAGE STOPS"  : page_ == P_LEN ? "TURN K1: X2 OR /2  THE LOOP REPEATS" : page_ == P_SAVE ? "TAP SAVE = SAVE LOOP  HOLD = CLEAR ALL" : page_ == P_KEY ? "KEYS FOLLOW THE KEY  CHANGE ANY TIME"
+    const char* hint = mic_ == 1 ? (page_ == P_SAVE ? "K4 = TRIGGER LEVEL  LINE = THRESHOLD" : "K1 = TRIGGER LEVEL  LINE = THRESHOLD") : mic_ == 2 ? "RECORDING  K1 ON LOOP PAGE STOPS"  : page_ == P_LEN ? "TURN K1: X2 OR /2  THE LOOP REPEATS" : page_ == P_SAVE ? "SAVE AND CLEAR LOOPS: PROJECT MENU ON THE PHONE" : page_ == P_KEY ? "KEYS FOLLOW THE KEY  CHANGE ANY TIME"
                      : "SEL TRACK  PRE BROWSE  ALG ALGORITHM";
     drawText(90, 6, 230, 1, DIM, BLACK, hint, 38);
     needClear_ = false;

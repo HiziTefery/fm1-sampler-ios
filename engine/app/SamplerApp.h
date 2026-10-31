@@ -64,7 +64,8 @@ public:
     void loopRecord();                            // REC: arm / end the first take, or toggle overdub once a loop exists
     void lenAction(bool dbl);
     void loopSave();
-    void loopClear();
+    void loopClear();                             // every loop of every track (phone PROJECT menu)
+    void loopClearTrack();                        // the loop of the selected track
     void micSample();                             // toggle: record the microphone into a new sample for the selected track
     float micThreshold() const { return 0.005f * std::pow(100.f, micThr_); }   // linear level that starts a take
     void setMicThreshold01(float v) { micThr_ = std::min(1.f, std::max(0.f, v)); s_.setMicThreshold(micThreshold()); }
@@ -141,7 +142,6 @@ private:
     Session::Status st_{};
     bool loopAny_ = false;
     int mic_ = 0, micTrack_ = 0;
-    uint32_t saveDownAt_ = 0; bool saveHeld_ = false, saveHoldDone_ = false;
     int lastSampleVersion_ = 0, lastSampleFails_ = 0;
     uint32_t commitAt_ = 0; int commitTrack_ = -1;
     std::string toast_; uint32_t toastUntil_ = 0;

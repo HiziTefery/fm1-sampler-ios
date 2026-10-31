@@ -14,6 +14,7 @@ public:
     void setSize(float w, float h, float topInset, float bottomInset) { W_ = w; H_ = h; top_ = topInset; bottom_ = bottomInset; }
     void setLink(bool midi, bool usbAudio) { linkMidi_ = midi; linkAudio_ = usbAudio; }
     void frame(uint32_t nowMs);
+    void openProject(bool on) { projectOpen_ = on; }
     void setEditor(bool on) { editor_ = on; }   // false: the cassette deck, true: sample / page editor
     const std::vector<UiOp>& ops() const { return ops_; }
     void touch(int action /*0 down 1 move 2 up*/, float x, float y, uint32_t nowMs);
@@ -47,6 +48,7 @@ private:
     void sampleArea(Rect r);
     void pagePanel(Rect r);
     void librarySheet();
+    void projectSheet();
 
     SamplerApp& app_;
     float W_ = 860, H_ = 400, top_ = 0, bottom_ = 0;
@@ -56,8 +58,9 @@ private:
     bool haveActive_ = false;
     uint32_t now_ = 0;
     Session::Status st_{};
-    bool linkMidi_ = false, linkAudio_ = false, sheetOpen_ = false, editor_ = false;
+    bool linkMidi_ = false, linkAudio_ = false, sheetOpen_ = false, editor_ = false, projectOpen_ = false;
     float sheetScroll_ = 0, sheetLastY_ = 0, sheetMoved_ = 0;
     Rect sheetList_{0, 0, 0, 0};
+    uint32_t clearArmed_ = 0;
     float vu_[2] = {0, 0}, dragY_ = 0, dragV_ = 0;
 };

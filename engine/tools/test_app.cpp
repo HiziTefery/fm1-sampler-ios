@@ -63,14 +63,18 @@ int main() {
     { app.selectTrack(3); app.setAlgo(3); run(0.3); size_t km = all.size(); uint8_t kd[3] = {0x90, (uint8_t)(53 + 26), 100}, ku[3] = {0x80, (uint8_t)(53 + 26), 0}; app.onMidi(kd, 3); run(0.6); app.onMidi(ku, 3); run(0.3);
       CHECK(rmsFrom(km) > 0.002, "KIT: the last of the 27 keys plays a pad (rms %.4f)", rmsFrom(km)); app.selectTrack(0); }
     uint8_t sd[3] = {0x91, (uint8_t)SamplerApp::SAVE, 100}, su[3] = {0x81, (uint8_t)SamplerApp::SAVE, 100};
-    app.onMidi(sd, 3); app.onMidi(su, 3); run(1.0);
+    app.onMidi(sd, 3); run(0.9); app.onMidi(su, 3); run(0.3);   // the FM-1 SAVE button neither saves nor clears any more
+    CHECK(app.loopExists() && app.page() == SamplerApp::P_SAVE, "SAVE button only opens the LOOP page (held for 0.9 s: loop stays)");
+    app.loopSave(); run(1.0);
     int wavs = 0; { FILE* p = popen("ls /tmp/fm1sampler_t2/sample_*.wav 2>/dev/null | wc -l", "r"); if (p) { fscanf(p, "%d", &wavs); pclose(p); } }
     CHECK(wavs == 1, "SAVE wrote the loop into the library (%d files)", wavs);
-    app.onMidi(sd, 3); run(0.9); app.onMidi(su, 3); run(0.3);
-    CHECK(!app.status().track_has_clip[0] && !app.loopExists(), "holding SAVE cleared the loop");
+    app.loopClearTrack(); run(0.3);
+    CHECK(!app.status().track_has_clip[0], "clearing one track's loop");
+    app.loopClear(); run(0.3);
+    CHECK(!app.loopExists(), "PROJECT menu: clear all loops");
     { bool any = false; for (int t = 0; t < 8; t++) any |= app.status().track_has_clip[t]; CHECK(!any, "...and every other track's loop"); }
     // microphone sample
-    btn(SamplerApp::SAVE); btn(SamplerApp::SAVE);   // (taps save again but there is no loop: just a message)
+    btn(SamplerApp::SAVE);
     enc(2, 1); run(0.3); CHECK(app.micState() == 1, "mic sampling waits for sound");
     { double ph = 0; for (long i = 0; i < (long)(1.0 * sr) / 256; i++) { for (int k = 0; k < 256; k++) { float v = 0.4f * std::sin(ph); ph += 2 * M_PI * 440.0 / sr; in[2 * k] = in[2 * k + 1] = v; } std::fill(buf.begin(), buf.end(), 0.f); s.process(buf.data(), in.data(), 256); std::this_thread::sleep_for(std::chrono::microseconds(200)); if (i % 5 == 0) { now += 33; app.tick(now); } } std::fill(in.begin(), in.end(), 0.f); }
     CHECK(app.micState() == 2, "mic sampling recording");
