@@ -123,13 +123,27 @@ void SamplerUI::reel(float cx, float cy, float r, float ang) {
     circle(cx, cy, 3, kPaper);
 }
 
-// Level meter: a thin bar, orange where it gets hot.
-void SamplerUI::vu(Rect r, float v, const std::string& name) {
-    text(r.x, r.y + 15, 9, kDim, name, 0, true);
-    const float y = r.y + 28, h = 4, w = r.w, f = clamp01(v);
-    rrect({r.x, y, w, h}, 0, kLine);
-    rrect({r.x, y, w * std::min(f, 0.8f), h}, 0, kPaper);
-    if (f > 0.8f) rrect({r.x + w * 0.8f, y, w * (f - 0.8f), h}, 0, kOrange);
+// The sample of the selected track: its waveform (the playback window bright), the playback mode, and a line for every sounding voice.
+void SamplerUI::sampleView(Rect r) {
+    const int t = app_.track();
+    const auto ts = app_.state(t);
+    text(r.x, r.y + 8, 11, kPaper, SamplerApp::algoName(ts.algo), 0, true);
+    tap({r.x, r.y, 120, 18}, [this, ts] { app_.setAlgo((ts.algo + 1) % 6); });   // tap the mode: the next one
+    const int nv = st_.voiceN[t];
+    if (nv > 0) text(r.x + r.w, r.y + 8, 9, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
+    const Rect w{r.x, r.y + 20, r.w, r.h - 20};
+    const int bins = std::max(20, (int)(w.w / 2.5f));
+    auto pk = app_.peaks(t, bins);
+    if (pk.empty()) { text(w.x + w.w / 2, w.y + w.h / 2, 10, kDim, "NO SAMPLE", 1, true); return; }
+    const float cy = w.y + w.h / 2, bw = w.w / bins;
+    for (int i = 0; i < (int)pk.size(); i++) {
+        const float pos = (i + 0.5f) / bins, v = std::min(1.f, pk[(size_t)i] * 1.1f);
+        rrect({w.x + i * bw, cy - std::max(1.f, v * (w.h / 2 - 1)), std::max(1.f, bw - 0.6f), std::max(2.f, v * (w.h - 2))}, 0, pos >= ts.start && pos <= ts.end ? kPaper : kLine);
+    }
+    for (int j = 0; j < nv; j++) {
+        const float vx = w.x + std::min(1.f, std::max(0.f, st_.voicePos[t][j])) * w.w;
+        line(vx, w.y, vx, w.y + w.h, kOrange, 2);
+    }
 }
 
 // A rotary knob on a knob of the app (drag up / down to turn): a white disc, a black pointer, orange dots for the value.
@@ -137,13 +151,13 @@ void SamplerUI::knob(float cx, float cy, SamplerApp::Page page, int idx, bool) {
     auto k = app_.knobs(page);
     const auto& p = k[(size_t)idx];
     if (!p.valid) return;
-    const float R = 18, n = clamp01(p.norm);
-    for (int j = 0; j <= 10; j++) { const float a = (-135.f + j * 27.f) * kPi / 180; circle(cx + std::sin(a) * (R + 7), cy - std::cos(a) * (R + 7), 1.5f, j / 10.f <= n + 0.001f ? kOrange : kLine); }
+    const float R = 14, n = clamp01(p.norm);
+    for (int j = 0; j <= 10; j++) { const float a = (-135.f + j * 27.f) * kPi / 180; circle(cx + std::sin(a) * (R + 6), cy - std::cos(a) * (R + 6), 1.4f, j / 10.f <= n + 0.001f ? kOrange : kLine); }
     circle(cx, cy, R, kPaper);
     const float a = (-135.f + n * 270.f) * kPi / 180;
     line(cx + std::sin(a) * 4, cy - std::cos(a) * 4, cx + std::sin(a) * (R - 3), cy - std::cos(a) * (R - 3), kInk, 3.5f);
-    text(cx, cy + R + 16, 9, kDim, fit(p.name, 100, 9), 1, true);
-    text(cx, cy + R + 29, 11, kPaper, p.value, 1, true);
+    text(cx, cy + R + 15, 9, kDim, fit(p.name, 100, 9), 1, true);
+    text(cx, cy + R + 28, 11, kPaper, p.value, 1, true);
     Rect hr{cx - 36, cy - R - 12, 72, 2 * R + 46};
     hit(hr, [this, n](float, float y) { dragY_ = y; dragV_ = n; },
         [this, page, idx](float, float y) { app_.knobs(page)[(size_t)idx].set(clamp01(dragV_ + (dragY_ - y) / 110.f)); });
@@ -156,7 +170,7 @@ void SamplerUI::cassette(Rect c) {
     const int mic = app_.micState();
     // label: paper strip with a coloured edge, the sample name, the counter
     Rect lb{c.x + 24, c.y + 12, c.w - 48, 50};
-    std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "  " + SamplerApp::algoName(app_.algo());
+    std::string title = app_.sampleLabel(t), sub;
     if (title.empty()) title = "EMPTY TRACK";
     if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
     else if (mic == 2) { title = "RECORDING " + std::to_string(st_.sampleSeconds).substr(0, 4) + " S"; sub = "MICROPHONE"; }
@@ -164,10 +178,12 @@ void SamplerUI::cassette(Rect c) {
     const std::string ts = app_.toast();
     if (!ts.empty()) sub = ts;
     text(lb.x + 28, lb.y + 14, 8.5f, kDim, fit(sub, lb.w - 130, 8.5f), 0, true);
-    text(lb.x + 28, lb.y + 31, 16, kPaper, fit(title, lb.w - 56, 15), 0, true);
+    text(lb.x + 28, lb.y + 31, 16, kOrange, std::to_string(t + 1), 0, true);   // the track: tap for the next one
+    text(lb.x + 46, lb.y + 31, 16, kPaper, fit(title, lb.w - 74, 15), 0, true);
+    tap({lb.x + 24, lb.y + 12, 22, 30}, [this, t] { app_.selectTrack((t + 1) % SamplerApp::kTracks); });
     tri(lb.x + 18, lb.y + 15, lb.x + 12, lb.y + 23, lb.x + 18, lb.y + 31, kPaper);
     tri(lb.x + lb.w - 12, lb.y + 15, lb.x + lb.w - 6, lb.y + 23, lb.x + lb.w - 12, lb.y + 31, kPaper);
-    tap({lb.x + 24, lb.y, lb.w - 48, lb.h}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+    tap({lb.x + 46, lb.y, lb.w - 70, lb.h}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
     tap({lb.x, lb.y, 24, lb.h}, [this] { app_.browse(-1); });
     tap({lb.x + lb.w - 24, lb.y, 24, lb.h}, [this] { app_.browse(1); });
     float lsec = 0, psec = 0, lp = 0;
@@ -244,15 +260,7 @@ float SamplerUI::loopPos() const {
 // Timeline of the selected track: a ruler with bars and seconds, the loop's waveform, the playhead. Drag anywhere on it to scrub.
 void SamplerUI::timeline(Rect r) {
     const int t = app_.track();
-    const float chh = (r.h - 16 - 3 * 4) / 4;
-    for (int i = 0; i < 8; i++) {   // the eight tracks
-        Rect c{r.x + 4 + (i % 2) * 25.f, r.y + 8 + (i / 2) * (chh + 4), 22, chh};
-        const bool sel = i == t;
-                text(c.x + 11, c.y + chh / 2 - 1, 12, sel ? kOrange : kDim, std::to_string(i + 1), 1, true);
-        if (st_.track_clip_rec[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 0, kOrange); else if (st_.track_has_clip[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 0, sel ? kOrange : kPaper);
-        tap({c.x - 2, c.y - 2, c.w + 4, c.h + 4}, [this, i] { app_.selectTrack(i); });
-    }
-    const float tx = r.x + 54, tw = r.w - 54 - 6, rh = 28, wy = r.y + rh + 8, wh = r.h - rh - 16;
+    const float tx = r.x + 6, tw = r.w - 12, rh = 28, wy = r.y + rh + 8, wh = r.h - rh - 16;
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const float sr = (float)app_.session().sampleRate(), loopSec = hasLoop ? (float)(st_.loopSamples / sr) : 0.f;
     if (!hasLoop) {
@@ -307,19 +315,16 @@ void SamplerUI::deck(Rect r) {
     const float top = 12, ch = 192, cw = std::min(ch * 1.75f, W_ * 0.42f);
     const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
-    auto smooth = [](float& vu, float peak) { const float db = peak > 1e-4f ? 20 * std::log10(peak) : -80.f; const float t = clamp01((db + 38.f) / 41.f); vu += (t - vu) * (t > vu ? 0.55f : 0.14f); return vu; };
-    const float vl = smooth(vu_[0], st_.master_peak), vr = smooth(vu_[1], st_.track_peak[app_.track()]);
-    const float vw = (w0 - 14) / 2, vh = 60;
-    vu({x0, top + 4, vw, vh}, vl, "MASTER");
-    vu({x0 + vw + 14, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
-    const float py = top + vh + 28;
+    const float vh = 78;
+    sampleView({x0, top + 2, w0, vh});
+    const float py = top + vh + 24;
     text(x0, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
     for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
         Rect nr{zr - (10 - i) * 22.f, py - 11, 22, 22};
         rrect({nr.x + 3, py - 3, 16, 6}, 0, kTabs[i] == app_.page() ? kOrange : kLine);
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
-    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 50, app_.page(), i);
+    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);
     const float ty = H_ - 46;
     timeline({24, top + ch + 16, W_ - 48, ty - 8 - (top + ch + 16)});
     struct K { const char* l; int icon; bool on; std::function<void()> f; };

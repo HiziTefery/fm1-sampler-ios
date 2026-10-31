@@ -38,7 +38,7 @@ private:
     void topBar(Rect r);
     void deck(Rect r);
     void cassette(Rect r);
-    void vu(Rect r, float v, const std::string& name);
+    void sampleView(Rect r);
     void knob(float cx, float cy, SamplerApp::Page page, int idx, bool unused = false);
     void timeline(Rect r);
     void key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot);
@@ -62,5 +62,5 @@ private:
     float sheetScroll_ = 0, sheetLastY_ = 0, sheetMoved_ = 0;
     Rect sheetList_{0, 0, 0, 0};
     uint32_t clearArmed_ = 0;
-    float vu_[2] = {0, 0}, dragY_ = 0, dragV_ = 0;
+    float dragY_ = 0, dragV_ = 0;
 };

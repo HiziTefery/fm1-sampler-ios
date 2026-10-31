@@ -79,7 +79,7 @@ public:
     // mixer and per-track state
     struct TrackState {
         int algo = 0;
-        float a = 0.1f, d = 0.35f, s = 0.8f, r = 0.4f;
+        float a = 0.1f, d = 0.35f, s = 0.8f, r = 0.63246f;   // release 5 r^2 = 2.0 s
         float lfoRate = 0.3f, lfoDepth = 0.f; int lfoTarget = 0, lfoShape = 0;
         float start = 0.f, end = 1.f, speed = 0.5f, pitch = 0.5f;
         int arpRate = 0, arpPatt = 0, arpOct = 0; float arpLen = 0.7f;
