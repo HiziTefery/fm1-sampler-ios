@@ -57,12 +57,12 @@ void SamplerUI::frame(uint32_t now) {
     ops_.clear(); hits_.clear();
     rrect({0, 0, W_, H_}, 0, BG);
     const float tb = 44, left = 176, right = 252;
-    topBar({0, 0, W_, tb});
-    if (!editor_) {   // the cassette deck; the old sample / page editor stays one tap away (EDIT)
-        deck({MARGIN, tb + MARGIN, W_ - 2 * MARGIN, H_ - tb - 2 * MARGIN});
+    if (!editor_) {   // the cassette deck fills the screen; the old sample / page editor stays one tap away (EDIT)
+        deck({0, 0, W_, H_});
         if (sheetOpen_) librarySheet();
         return;
     }
+    topBar({0, 0, W_, tb});
     trackList({MARGIN, tb + MARGIN, left - MARGIN, H_ - tb - 2 * MARGIN});
     sampleArea({left + MARGIN, tb + MARGIN, W_ - left - right - 2 * MARGIN, H_ - tb - 2 * MARGIN});
     pagePanel({W_ - right, tb + MARGIN, right - MARGIN, H_ - tb - 2 * MARGIN});
@@ -94,16 +94,8 @@ void SamplerUI::topBar(Rect r) {
     x += 62;
     button({x, 6, 56, r.h - 12}, "CLEAR", false, [this] { app_.loopClear(); }, 11);
     x += 62;
-    {   // microphone take and disk import (the deck has no other place for them)
-        static const char* micLab[] = {"MIC", "WAIT", "STOP", "SAVING"};
-        const int ms = app_.micState();
-        button({x, 6, 56, r.h - 12}, micLab[ms], ms == 2, [this] { app_.micSample(); }, 11, ms != 0);
-        x += 62;
-        button({x, 6, 56, r.h - 12}, "FILE", false, [this] { app_.requestFile(); }, 11);
-        x += 62;
-        button({x, 6, 56, r.h - 12}, "EDIT", editor_, [this] { editor_ = !editor_; }, 11);
-        x += 70;
-    }
+    button({x, 6, 56, r.h - 12}, "DECK", false, [this] { editor_ = false; }, 11);
+    x += 70;
     text(x, cy - 6, 12, st_.freeRecording || recOn || armed ? ACCENT : TEXT, app_.loopText(), 0, true);
     text(x, cy + 11, 9.5f, DIM, std::string("LOOP SOURCE: ") + (app_.knobs(SamplerApp::P_SAVE)[1].value), 0, false);
     tap({x - 4, 0, 200, r.h}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
@@ -115,20 +107,66 @@ void SamplerUI::topBar(Rect r) {
 }
 
 // ---- cassette deck ----
+// A tape deck front panel: smoked cassette in the middle with turning reels, analogue VU needles and knobs at its sides, the eight loops as
+// tape strips that scroll under a fixed head (OP-1 style) and the transport keys. Its colours are its own (they do not follow the light/dark theme).
 namespace {
 constexpr float kPi = 3.14159265f;
+constexpr uint32_t kPanel = theme::argb(26, 26, 31), kPanelHi = theme::argb(52, 52, 60), kMetal = theme::argb(150, 148, 140), kShell = theme::argb(46, 44, 52),
+    kShellHi = theme::argb(74, 72, 82), kGlass = theme::argb(14, 13, 17), kReel = theme::argb(232, 230, 222), kTape = theme::argb(86, 58, 40), kTapeHi = theme::argb(120, 84, 58),
+    kPaper = theme::argb(237, 232, 218), kInk = theme::argb(28, 26, 30), kRed = theme::argb(206, 64, 44), kAmber = theme::argb(232, 163, 61);
 }
 
-// One reel: tape pack (radius r), hub with six teeth turned by `ang`.
+// Tape pack of radius r with its winding rings, a white hub with six teeth turned by `ang`.
 void SamplerUI::reel(float cx, float cy, float r, float ang) {
-    circle(cx, cy, r, OUTLINE);
-    circle(cx, cy, 13, SURFACE);
+    circle(cx, cy, r, kTape);
+    for (float rr = 22; rr < r - 1; rr += 4) stroke({cx - rr, cy - rr, 2 * rr, 2 * rr}, rr, rr < r - 5 ? theme::argb(70, 46, 32) : kTapeHi, 1);
+    stroke({cx - r, cy - r, 2 * r, 2 * r}, r, kTapeHi, 1.5f);
+    circle(cx, cy, 21, kReel);
+    circle(cx, cy, 15, kGlass);
     for (int k = 0; k < 6; k++) {
         const float a = ang + k * kPi / 3;
-        line(cx + 5 * std::cos(a), cy + 5 * std::sin(a), cx + 12 * std::cos(a), cy + 12 * std::sin(a), TEXT, 3);
+        line(cx + 15 * std::cos(a), cy + 15 * std::sin(a), cx + 9 * std::cos(a), cy + 9 * std::sin(a), kReel, 3.5f);
     }
-    stroke({cx - 13, cy - 13, 26, 26}, 13, TEXT, 1.5f);
-    circle(cx, cy, 3, BG);
+    circle(cx, cy, 3, kMetal);
+}
+
+// Analogue VU meter: cream face, scale with a red end, needle at v (0..1).
+void SamplerUI::vu(Rect r, float v, const std::string& name) {
+    rrect({r.x - 2, r.y - 2, r.w + 4, r.h + 4}, 7, kMetal);
+    rrect(r, 5, kPaper);
+    const float px = r.x + r.w / 2, py = r.y + r.h * 1.02f, R = r.h * 0.9f;
+    clip(r);
+    for (int j = 0; j <= 20; j++) {
+        const float a = (-48.f + j * 4.8f) * kPi / 180, major = j % 4 == 0 ? 1.f : 0.f;
+        const float l = major ? 10.f : 5.f;
+        line(px + std::sin(a) * (R - l), py - std::cos(a) * (R - l), px + std::sin(a) * R, py - std::cos(a) * R, j >= 14 ? kRed : kInk, major ? 1.6f : 1.f);
+        if (major) text(px + std::sin(a) * (R - 19), py - std::cos(a) * (R - 19), 8, j >= 14 ? kRed : kInk, std::to_string(j / 4 * 2 - 10 + (j >= 16 ? 0 : 0)).substr(0, 3), 1, true);
+    }
+    text(px + 34, r.y + r.h * 0.74f, 11, kInk, "VU", 1, true);
+    text(r.x + 8, r.y + r.h - 9, 8, kInk, name, 0, true);
+    const float a = (-48.f + clamp01(v) * 96.f) * kPi / 180;
+    line(px, py, px + std::sin(a) * (R - 2), py - std::cos(a) * (R - 2), kInk, 1.6f);
+    circle(px, py, 9, kInk);
+    endClip();
+}
+
+// A rotary knob on a knob of the app (drag up / down to turn).
+void SamplerUI::knob(float cx, float cy, SamplerApp::Page page, int idx, bool selectedTrackAccent) {
+    auto k = app_.knobs(page);
+    const auto& p = k[(size_t)idx];
+    if (!p.valid) return;
+    const float R = 17, n = clamp01(p.norm);
+    for (int j = 0; j <= 10; j++) { const float a = (-135.f + j * 27.f) * kPi / 180; circle(cx + std::sin(a) * (R + 6), cy - std::cos(a) * (R + 6), 1.2f, j / 10.f <= n ? kAmber : kPanelHi); }
+    circle(cx, cy, R + 1, kMetal);
+    circle(cx, cy, R, kShell);
+    circle(cx - 2, cy - 3, R - 5, kShellHi);
+    const float a = (-135.f + n * 270.f) * kPi / 180;
+    line(cx + std::sin(a) * 4, cy - std::cos(a) * 4, cx + std::sin(a) * (R - 2), cy - std::cos(a) * (R - 2), kAmber, 2.5f);
+    text(cx, cy + R + 16, 8.5f, kMetal, fit(p.name, 70, 8.5f), 1, true);
+    text(cx, cy + R + 27, 9.5f, kPaper, p.value, 1, true);
+    Rect hr{cx - 30, cy - R - 10, 60, 2 * R + 40};
+    hit(hr, [this, n](float, float y) { dragY_ = y; dragV_ = n; },
+        [this, page, idx](float, float y) { app_.knobs(page)[(size_t)idx].set(clamp01(dragV_ + (dragY_ - y) / 110.f)); });
 }
 
 void SamplerUI::cassette(Rect c) {
@@ -136,132 +174,171 @@ void SamplerUI::cassette(Rect c) {
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const bool recNow = st_.freeRecording || st_.track_clip_rec[t];
     const int mic = app_.micState();
-    rrect(c, 9, RAISED); stroke(c, 9, recNow ? ACCENT : OUTLINE, recNow ? 2 : 1.5f);
-    for (int i = 0; i < 4; i++) circle(c.x + (i & 1 ? c.w - 11 : 11), c.y + (i & 2 ? c.h - 11 : 11), 3, OUTLINE);
-    // paper label: a stripe in the accent colour, the track, the sample, the counter
-    const uint32_t paper = light ? BG : TEXT, ink = ON_ACCENT;
-    Rect lb{c.x + 20, c.y + 14, c.w - 40, c.h * 0.36f};
-    rrect(lb, 3, paper); if (light) stroke(lb, 3, OUTLINE, 1);
-    rrect({lb.x, lb.y, lb.w, 7}, 0, ACCENT);
-    std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "   " + SamplerApp::algoName(app_.algo());
+    // shell: smoked plastic, a lighter edge, four screws
+    rrect({c.x - 3, c.y - 3, c.w + 6, c.h + 6}, 15, recNow ? kAmber : kMetal);
+    rrect(c, 13, kShell);
+    stroke({c.x + 3, c.y + 3, c.w - 6, c.h - 6}, 11, kShellHi, 1);
+    for (int i = 0; i < 4; i++) { const float sx = c.x + (i & 1 ? c.w - 12 : 12), sy = c.y + (i & 2 ? c.h - 12 : 12); circle(sx, sy, 4, kMetal); line(sx - 2.5f, sy - 2.5f, sx + 2.5f, sy + 2.5f, kShell, 1.2f); }
+    // paper label
+    Rect lb{c.x + 24, c.y + 14, c.w - 48, c.h * 0.31f};
+    rrect(lb, 3, kPaper);
+    rrect({lb.x, lb.y, lb.w, 8}, 0, kAmber); rrect({lb.x, lb.y + 8, lb.w, 3}, 0, kRed);
+    std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "  " + SamplerApp::algoName(app_.algo());
     if (title.empty()) title = "EMPTY TRACK";
-    if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE   " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
+    if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
     else if (mic == 2) { title = "RECORDING " + std::to_string(st_.sampleSeconds).substr(0, 4) + " S"; sub = "MICROPHONE"; }
     else if (mic == 3) title = "SAVING";
     const std::string ts = app_.toast();
     if (!ts.empty()) sub = ts;
-    text(lb.x + 10, lb.y + 22, 8.5f, ink, fit(sub, lb.w - 20, 8.5f), 0, true);
-    text(lb.x + 10, lb.y + 40, 17, ink, fit(title, lb.w - 20, 17), 0, true);
+    text(lb.x + 26, lb.y + 24, 8.5f, kInk, fit(sub, lb.w - 52, 8.5f), 0, true);
+    text(lb.x + 26, lb.y + 41, 16, kInk, fit(title, lb.w - 52, 16), 0, true);
+    for (int i = 0; i < 2; i++) line(lb.x + 26, lb.y + lb.h - 11 + i * 0.f - i * 7, lb.x + lb.w - 26, lb.y + lb.h - 11 - i * 7, theme::argb(170, 165, 150), 1);
+    // library arrows on the label, tap the label for the list
+    tri(lb.x + 14, lb.y + 33, lb.x + 6, lb.y + 41, lb.x + 14, lb.y + 49, kInk);
+    tri(lb.x + lb.w - 14, lb.y + 33, lb.x + lb.w - 6, lb.y + 41, lb.x + lb.w - 14, lb.y + 49, kInk);
+    tap({lb.x + 26, lb.y, lb.w - 52, lb.h}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
+    tap({lb.x, lb.y + 10, 26, lb.h - 10}, [this] { app_.browse(-1); });
+    tap({lb.x + lb.w - 26, lb.y + 10, 26, lb.h - 10}, [this] { app_.browse(1); });
+    // counter
     float lsec = 0, psec = 0, lp = 0;
-    if (hasLoop) {
-        lsec = (float)(st_.loopSamples / app_.session().sampleRate());
-        lp = st_.track_has_clip[t] ? st_.clipPos[t] : (float)(st_.pos / st_.loopSamples);
-        psec = lp * lsec;
-    } else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
+    if (hasLoop) { lsec = (float)(st_.loopSamples / app_.session().sampleRate()); lp = loopPos(); psec = lp * lsec; }
+    else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
     char cnt[48]; snprintf(cnt, sizeof cnt, "%d:%04.1f / %d:%04.1f", (int)psec / 60, std::fmod(psec, 60.f), (int)lsec / 60, std::fmod(lsec, 60.f));
-    for (int i = 0; i < 2; i++) line(lb.x + 10, lb.y + lb.h - 20 + i * 9, lb.x + lb.w - 10, lb.y + lb.h - 20 + i * 9, OUTLINE, 1);
-    text(lb.x + lb.w - 10, lb.y + lb.h - 28, 10, ink, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
-    if (recNow || st_.freeArmed) { if ((now_ / 400) % 2 == 0 || recNow) circle(lb.x + 14, lb.y + lb.h - 28, 5, ACCENT); text(lb.x + 24, lb.y + lb.h - 28, 9.5f, ink, st_.freeArmed && !recNow ? "ARMED" : "REC", 0, true); }
-    tap(lb, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
-    // window with the two reels: the pack moves from supply to take-up as the loop plays
-    Rect wd{c.x + c.w * 0.1f, lb.y + lb.h + 10, c.w * 0.8f, c.h - (lb.h + 14) - 10 - 42};
-    rrect(wd, 10, BG); stroke(wd, 10, OUTLINE, 1);
-    const float cy = wd.y + wd.h / 2, rmax = wd.h / 2 - 3, rmin = 15;
+    text(lb.x + lb.w - 28, lb.y + 24, 9, kInk, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
+    if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + 40, lb.y + lb.h - 22, 4.5f, kRed); }
+    // window with the reels
+    Rect wd{c.x + c.w * 0.1f, lb.y + lb.h + 10, c.w * 0.8f, c.h - (lb.h + 14) - 10 - 44};
+    rrect({wd.x - 2, wd.y - 2, wd.w + 4, wd.h + 4}, 13, kShellHi);
+    rrect(wd, 12, kGlass);
+    const float cy = wd.y + wd.h / 2, rmax = wd.h / 2 - 2, rmin = 26;
     float p = hasLoop ? lp : std::min(1.f, st_.freeSeconds / 60.f), ang = hasLoop ? -lp * 2 * kPi * 6 : st_.freeRecording ? -(float)now_ * 0.004f : 0.f;
     if (!hasLoop && !st_.freeRecording) p = 0.5f;
     const float rl = rmin + (rmax - rmin) * (1 - p), rr = rmin + (rmax - rmin) * p;
     const float lx = wd.x + wd.w * 0.27f, rx = wd.x + wd.w * 0.73f;
     clip(wd);
     reel(lx, cy, rl, ang); reel(rx, cy, rr, ang);
+    // tape: from the packs to the bottom guides, a sheen on the glass
+    line(lx - rl * 0.6f, cy + rl * 0.8f, wd.x + wd.w * 0.36f, wd.y + wd.h, kTape, 3);
+    line(rx + rr * 0.6f, cy + rr * 0.8f, wd.x + wd.w * 0.64f, wd.y + wd.h, kTape, 3);
+    tri(wd.x + wd.w * 0.5f, wd.y, wd.x + wd.w * 0.74f, wd.y, wd.x + wd.w * 0.30f, wd.y + wd.h, theme::withAlpha(0xffffff, 14));
     endClip();
-    // tape path and head plate
-    Rect pl{c.x + c.w * 0.2f, c.y + c.h - 36, c.w * 0.6f, 26};
-    rrect(pl, 6, SURFACE); stroke(pl, 6, OUTLINE, 1);
-    const float ry = pl.y + 8;
-    line(lx, cy + rl, pl.x + 16, ry, OUTLINE, 2); line(rx, cy + rr, pl.x + pl.w - 16, ry, OUTLINE, 2);
-    line(pl.x + 16, ry, pl.x + pl.w - 16, ry, hasLoop && st_.playing ? ACCENT : DIM, 2);
-    circle(pl.x + 16, ry, 4, TEXT); circle(pl.x + pl.w - 16, ry, 4, TEXT);
-    circle(pl.x + pl.w / 2 - 14, pl.y + 17, 2.5f, OUTLINE); circle(pl.x + pl.w / 2 + 14, pl.y + 17, 2.5f, OUTLINE);
+    // head plate with rollers and the tape across the head
+    Rect pl{c.x + c.w * 0.2f, c.y + c.h - 38, c.w * 0.6f, 30};
+    rrect(pl, 7, kShellHi); rrect({pl.x + 2, pl.y + 2, pl.w - 4, pl.h - 4}, 6, kGlass);
+    const float ry = pl.y + 9;
+    line(pl.x + 14, ry, pl.x + pl.w - 14, ry, hasLoop && st_.playing ? kTapeHi : kTape, 3);
+    circle(pl.x + 14, ry, 5, kMetal); circle(pl.x + pl.w - 14, ry, 5, kMetal);
+    rrect({pl.x + pl.w / 2 - 12, pl.y + 3, 24, 9}, 2, kMetal);
+    circle(pl.x + pl.w / 2 - 20, pl.y + 21, 3, kShellHi); circle(pl.x + pl.w / 2 + 20, pl.y + 21, 3, kShellHi);
 }
 
-// Eight tape tracks: name, the loop with its playhead, level and volume fader.
-void SamplerUI::tapeTracks(Rect r) {
-    const float rh = (r.h - 7 * 4) / 8;
-    float pk[8][Session::kLoopBins]; int n[8]; float mx = 0.08f;
+float SamplerUI::loopPos() const {
+    const int t = app_.track();
+    if (!(app_.loopExists() && st_.loopSamples > 0)) return 0.f;
+    return st_.track_has_clip[t] ? st_.clipPos[t] : (float)(st_.pos / st_.loopSamples);
+}
+
+// The eight loops as tape strips. The tape runs under a fixed head in the middle: the loop is drawn repeated, shifted by the position.
+void SamplerUI::tapeStrip(Rect r) {
+    rrect({r.x - 2, r.y - 2, r.w + 4, r.h + 4}, 5, kMetal);
+    rrect(r, 3, kGlass);
+    const float lane = (r.h - 6 - 7 * 2) / 8, lbl = 22, tx = r.x + lbl, tw = r.w - lbl - 4, cxh = tx + tw / 2;
+    const float lp = loopPos(), Lpx = tw * 0.7f;
+    float mx = 0.08f; float pk[8][Session::kLoopBins]; int n[8];
     for (int i = 0; i < 8; i++) { n[i] = app_.session().loopPeaks(i, pk[i], Session::kLoopBins); for (int j = 0; j < n[i]; j++) mx = std::max(mx, pk[i][j]); }
-    for (int i = 0; i < SamplerApp::kTracks; i++) {
-        Rect row{r.x, r.y + i * (rh + 4), r.w, rh};
-        const bool sel = i == app_.track();
-        rrect(row, R_CARD, sel ? RAISED : SURFACE);
-        stroke(row, R_CARD, sel ? ACCENT : OUTLINE, sel ? 2 : 1);
-        tap(row, [this, i] { app_.selectTrack(i); });
-        text(row.x + 15, row.y + rh / 2, T_TITLE, sel ? ACCENT : TEXT, std::to_string(i + 1), 1, true);
-        const std::string lab = app_.sampleLabel(i);
-        text(row.x + 32, row.y + rh / 2 - 6, 10.5f, lab.empty() ? DIM : TEXT, fit(lab.empty() ? "EMPTY" : lab, 84, 10.5f), 0, true);
-        text(row.x + 32, row.y + rh / 2 + 8, 8.5f, DIM, SamplerApp::algoName(app_.state(i).algo), 0, false);
-        // the loop
-        Rect ln{row.x + 124, row.y + 5, row.w - 124 - 122, rh - 10};
-        rrect(ln, 0, BG); stroke(ln, 0, OUTLINE, 1);
-        const float lcy = ln.y + ln.h / 2, lh = ln.h / 2 - 2;
-        const bool rec = st_.track_clip_rec[i];
+    for (int i = 0; i < 8; i++) {
+        const float y = r.y + 3 + i * (lane + 2), cy = y + lane / 2;
+        const bool sel = i == app_.track(), rec = st_.track_clip_rec[i];
+        rrect({r.x + 3, y, r.w - 6, lane}, 2, sel ? kPanelHi : kPanel);
+        text(r.x + 12, cy, 8.5f, sel ? kAmber : kMetal, std::to_string(i + 1), 1, true);
+        tap({r.x, y - 1, r.w, lane + 2}, [this, i] { app_.selectTrack(i); });
+        clip({tx, y, tw, lane});
+        rrect({tx, cy - 1, tw, 2}, 0, kTape);   // the tape itself
         if (n[i] > 0) {
-            const int cols = std::max(1, (int)((ln.w - 4) / 2)), per = std::max(1, n[i] / cols);
-            const float bw = (ln.w - 4) / ((n[i] + per - 1) / per);
-            for (int a = 0; a * per < n[i]; a++) {
-                float v = 0; for (int j = a * per; j < std::min(n[i], (a + 1) * per); j++) v = std::max(v, pk[i][j]);
-                v = std::min(1.f, v / mx);
-                if (v > 0.01f) rrect({ln.x + 2 + a * bw, lcy - v * lh, std::max(1.f, bw - 0.5f), std::max(1.f, 2 * v * lh)}, 0, rec ? ACCENT : TEXT);
-            }
-        } else line(ln.x + 2, lcy, ln.x + ln.w - 2, lcy, OUTLINE, 1);
-        if (st_.track_has_clip[i] || rec) rrect({ln.x + 2 + st_.clipPos[i] * (ln.w - 4), ln.y, 2, ln.h}, 0, ACCENT);
-        // level and volume
-        Rect fd{row.x + row.w - 112, row.y + rh / 2 - 13, 100, 26};
-        const float lv = std::min(1.f, st_.track_peak[i] * 1.5f), v = clamp01(app_.state(i).vol);
-        rrect({fd.x, fd.y, fd.w, 4}, 0, OUTLINE); rrect({fd.x, fd.y, std::max(1.f, fd.w * lv), 4}, 0, TEXT);
-        line(fd.x, fd.y + 18, fd.x + fd.w, fd.y + 18, OUTLINE, 2);
-        line(fd.x, fd.y + 18, fd.x + 4 + v * (fd.w - 8), fd.y + 18, DIM, 2);
-        rrect({fd.x + v * (fd.w - 8), fd.y + 10, 8, 16}, 1, sel ? ACCENT : TEXT);
-        auto setv = [this, i, fd](float x, float) { app_.selectTrack(i); app_.setVolume(i, clamp01((x - fd.x - 4) / (fd.w - 8))); };
-        hit({fd.x - 8, row.y, fd.w + 16, row.h}, setv, setv);
+            const int cols = std::max(1, (int)(Lpx / 1.5f)), per = std::max(1, n[i] / cols), cnt = (n[i] + per - 1) / per;
+            const float bw = Lpx / cnt;
+            for (int k = -2; k <= 2; k++)
+                for (int a = 0; a < cnt; a++) {
+                    const float x = cxh + (a * bw - lp * Lpx) + k * Lpx;
+                    if (x + bw < tx || x > tx + tw) continue;
+                    float v = 0; for (int j = a * per; j < std::min(n[i], (a + 1) * per); j++) v = std::max(v, pk[i][j]);
+                    v = std::min(1.f, v / mx);
+                    if (v > 0.02f) rrect({x, cy - v * lane / 2, std::max(1.f, bw - 0.3f), std::max(1.f, v * lane)}, 0, rec ? kAmber : sel ? kReel : theme::argb(170, 168, 160));
+                }
+            if (st_.freeRecording || rec) {}   // the take is drawn once it exists
+        }
+        endClip();
     }
+    // the head: fixed line in the middle with a marker
+    line(cxh, r.y + 1, cxh, r.y + r.h - 1, st_.freeRecording || st_.track_clip_rec[app_.track()] ? kRed : kAmber, 1.5f);
+    tri(cxh - 5, r.y - 6, cxh + 5, r.y - 6, cxh, r.y + 1, kAmber);
 }
 
-// The tape machine's own knobs (LOOP SPEED, EXCITER, LO-FI, WOBBLE), two by two.
-void SamplerUI::tapeKnobs(Rect r) {
-    auto k = app_.knobs(SamplerApp::P_SEQ);
-    const float cw = (r.w - 10) / 2, rh = r.h / 2;
-    for (int i = 0; i < 4; i++) {
-        const auto& p = k[(size_t)i];
-        if (!p.valid) continue;
-        Rect cell{r.x + (i % 2) * (cw + 10), r.y + (i / 2) * rh, cw, rh - 4};
-        text(cell.x, cell.y + 7, T_CAPTION, DIM, p.name, 0, true);
-        text(cell.x + cell.w, cell.y + 7, 11, p.isChoice ? ACCENT : TEXT, p.value, 2, true);
-        Rect s{cell.x, cell.y + 17, cell.w, 13};
-        rrect(s, 0, SURFACE); stroke(s, 0, OUTLINE, 1);
-        rrect({s.x, s.y, std::max(2.f, s.w * clamp01(p.norm)), s.h}, 0, TEXT);
-        auto set = [this, i, s](float x, float) { app_.knobs(SamplerApp::P_SEQ)[(size_t)i].set(clamp01((x - s.x) / s.w)); };
-        hit({s.x, cell.y + 8, s.w, cell.h - 8}, set, set);
-    }
+void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot) {
+    rrect({r.x, r.y + 2, r.w, r.h}, 5, theme::argb(10, 10, 12));   // the key's shadow
+    rrect(r, 5, on ? kAmber : kPanelHi);
+    rrect({r.x + 2, r.y + 2, r.w - 4, 3}, 1, on ? theme::argb(255, 205, 120) : theme::argb(84, 84, 94));
+    const uint32_t ink = on ? kInk : kPaper;
+    const float cx = r.x + r.w / 2, cy = r.y + r.h / 2 - 5;
+    if (icon == 1) tri(cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, ink);                               // play
+    else if (icon == 2) { rrect({cx - 6, cy - 7, 4.5f, 14}, 0, ink); rrect({cx + 2, cy - 7, 4.5f, 14}, 0, ink); }   // pause
+    else if (icon == 3) circle(cx, cy, 7, hot ? kRed : kRed);                                           // record
+    else if (icon == 4) rrect({cx - 6, cy - 6, 12, 12}, 1, ink);                                        // stop / clear
+    text(cx, r.y + r.h - 9, 8.5f, ink, label, 1, true);
+    tap(r, std::move(f));
 }
 
 void SamplerUI::deck(Rect r) {
-    const float cw = std::min(360.f, r.w * 0.4f), ch = std::min(cw * 0.63f, r.h - 100);
-    cassette({r.x, r.y, cw, ch});
-    // library row
-    Rect lr{r.x, r.y + ch + 6, cw, 30};
-    const auto& lib = app_.library(); const int cur = app_.libraryCursor();
-    button({lr.x, lr.y, 30, lr.h}, "<", false, [this] { app_.browse(-1); }, 15);
-    button({lr.x + lr.w - 30, lr.y, 30, lr.h}, ">", false, [this] { app_.browse(1); }, 15);
-    Rect nm{lr.x + 34, lr.y, lr.w - 68, lr.h};
-    rrect(nm, R_CARD, SURFACE); stroke(nm, R_CARD, OUTLINE, 1);
-    if (!lib.empty()) {
-        text(nm.x + 8, nm.y + nm.h / 2 - 5, 11, TEXT, fit(lib[(size_t)cur].label, nm.w - 16, 11), 0, true);
-        text(nm.x + 8, nm.y + nm.h / 2 + 8, 8.5f, DIM, lib[(size_t)cur].group + "  " + std::to_string(cur + 1) + "/" + std::to_string(lib.size()), 0, false);
+    // panel: brushed dark metal, a bevel, four screws
+    rrect({0, 0, W_, H_}, 0, kPanel);
+    stroke({3, 3, W_ - 6, H_ - 6}, 6, kPanelHi, 1.5f);
+    for (int i = 0; i < 4; i++) { const float sx = i & 1 ? W_ - 11 : 11, sy = i & 2 ? H_ - 11 : 11; circle(sx, sy, 3.5f, kMetal); line(sx - 2, sy - 2, sx + 2, sy + 2, kPanel, 1); }
+    // header
+    const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
+    text(24, 18, 11, kMetal, "FM-1 SAMPLER  8 TRACK", 0, true);
+    text(W_ / 2, 18, 11, recOn || armed ? kAmber : kPaper, app_.loopText() + "   SRC " + std::string(app_.knobs(SamplerApp::P_SAVE)[1].value), 1, true);
+    tap({W_ / 2 - 150, 4, 300, 28}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
+    circle(W_ - 24, 18, 4, linkMidi_ && linkAudio_ ? kReel : linkMidi_ ? kAmber : kShellHi);
+    text(W_ - 34, 18, 9.5f, kMetal, std::string(linkMidi_ ? "FM-1  " : "NO FM-1  ") + "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, true);
+    // centre: the cassette, VU needles and knobs on both sides
+    const float top = 34, ch = 214, cw = std::min(ch * 1.6f, W_ * 0.42f);
+    const float cx = W_ / 2, cxl = cx - cw / 2, zl = 24, zr = W_ - 24;
+    cassette({cxl, top, cw, ch});
+    // VU: master (left) and the selected track (right)
+    auto smooth = [](float& vu, float peak) { const float db = peak > 1e-4f ? 20 * std::log10(peak) : -80.f; const float t = clamp01((db + 38.f) / 41.f); vu += (t - vu) * (t > vu ? 0.55f : 0.14f); return vu; };
+    const float vl = smooth(vu_[0], st_.master_peak), vr = smooth(vu_[1], st_.track_peak[app_.track()]);
+    const float vw = std::min(190.f, cxl - zl - 14), vh = 72;
+    const float lcx = zl + (cxl - zl) / 2, rcx = cxl + cw + (zr - cxl - cw) / 2;
+    vu({lcx - vw / 2, top + 4, vw, vh}, vl, "MASTER");
+    vu({rcx - vw / 2, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
+    const float ky = top + vh + 29, kdx = std::min(56.f, vw / 2);
+    for (int i = 0; i < 4; i++) {
+        knob(lcx + (i % 2 ? kdx / 2 + 8 : -kdx / 2 - 8), ky + (i / 2) * 70, SamplerApp::P_SEQ, i);
+        knob(rcx + (i % 2 ? kdx / 2 + 8 : -kdx / 2 - 8), ky + (i / 2) * 70, SamplerApp::P_MIX, i);
     }
-    tap(nm, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
-    const float ky = lr.y + lr.h + 8;
-    tapeKnobs({r.x, ky, cw, r.y + r.h - ky});
-    tapeTracks({r.x + cw + MARGIN, r.y, r.w - cw - MARGIN, r.h});
+    // the loops
+    tapeStrip({24, top + ch + 16, W_ - 48, 84});
+    // transport keys
+    const float ty = H_ - 46, kw = std::min(84.f, (W_ - 60) / 9.f), gap = 6;
+    struct K { const char* l; int icon; bool on; std::function<void()> f; };
+    const int ms = app_.micState();
+    static const char* micLab[] = {"MIC", "WAITING", "STOP MIC", "SAVING"};
+    std::vector<K> ks = {
+        {st_.playing ? "PAUSE" : "PLAY", st_.playing ? 2 : 1, st_.playing, [this] { app_.transportPlay(); }},
+        {app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }},
+        {"SAVE", 0, false, [this] { app_.loopSave(); }},
+        {"CLEAR", 4, false, [this] { app_.loopClear(); }},
+        {micLab[ms], 0, ms == 2, [this] { app_.micSample(); }},
+        {"FILE", 0, false, [this] { app_.requestFile(); }},
+        {"LIBRARY", 0, false, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); }},
+        {"EDIT", 0, false, [this] { editor_ = true; }},
+    };
+    const float total = ks.size() * kw + (ks.size() - 1) * gap;
+    for (size_t i = 0; i < ks.size(); i++) {
+        Rect kr{(W_ - total) / 2 + i * (kw + gap), ty, kw, 36};
+        key(kr, ks[i].l, ks[i].icon, ks[i].on, ks[i].f, false);
+        if (i == 1 && armed) stroke(kr, 5, kAmber, 2);
+    }
 }
 
 void SamplerUI::trackList(Rect r) {

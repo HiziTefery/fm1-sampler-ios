@@ -37,9 +37,12 @@ private:
     void topBar(Rect r);
     void deck(Rect r);
     void cassette(Rect r);
+    void vu(Rect r, float v, const std::string& name);
+    void knob(float cx, float cy, SamplerApp::Page page, int idx, bool unused = false);
+    void tapeStrip(Rect r);
+    void key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot);
+    float loopPos() const;
     void reel(float cx, float cy, float r, float ang);
-    void tapeTracks(Rect r);
-    void tapeKnobs(Rect r);
     void trackList(Rect r);
     void sampleArea(Rect r);
     void pagePanel(Rect r);
@@ -56,4 +59,5 @@ private:
     bool linkMidi_ = false, linkAudio_ = false, sheetOpen_ = false, editor_ = false;
     float sheetScroll_ = 0, sheetLastY_ = 0, sheetMoved_ = 0;
     Rect sheetList_{0, 0, 0, 0};
+    float vu_[2] = {0, 0}, dragY_ = 0, dragV_ = 0;
 };
