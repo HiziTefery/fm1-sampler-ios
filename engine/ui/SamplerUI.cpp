@@ -317,8 +317,29 @@ void SamplerUI::timeline(Rect r) {
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const float sr = (float)app_.session().sampleRate(), loopSec = hasLoop ? (float)(st_.loopSamples / sr) : 0.f;
     if (!hasLoop) {
-        const bool rec = st_.freeRecording;
-        text(tx + tw / 2, r.y + r.h / 2, 11, rec ? kOrange : kDim, rec ? "RECORDING " + num("%.1f", st_.freeSeconds) + " S" : "NO LOOP: PRESS REC AND PLAY", 1, true);
+        if (!st_.freeRecording) { text(tx + tw / 2, r.y + r.h / 2, 11, kDim, st_.freeArmed ? "WAITING FOR THE FIRST SOUND" : "NO LOOP: PRESS REC AND PLAY", 1, true); return; }
+        // the first take: its waveform is drawn as it is recorded, squeezed into the width (so the whole take is always in view), seconds on the ruler
+        static float fp[18500]; const int n = app_.session().freePeaks(fp, 18500);
+        const float secs = std::max(1.f, st_.freeSeconds), pps = tw / secs;
+        static const float steps[] = {0.5f, 1, 2, 5, 10, 15, 30, 60, 120};
+        float step = 120; for (float sp : steps) if (sp * pps >= 44) { step = sp; break; }
+        for (float sec = 0; sec <= secs + 0.001f; sec += step) {
+            const float x = tx + sec * pps;
+            line(x, r.y + 22, x, r.y + 8 + rh - 1, kDim, 1);
+            char lb[16]; if (secs >= 60) snprintf(lb, sizeof lb, "%d:%02d", (int)sec / 60, (int)sec % 60); else snprintf(lb, sizeof lb, step < 1 ? "%.1fs" : "%.0fs", sec);
+            if (x + 26 < tx + tw) text(x + 4, r.y + 28, 8, kDim, lb, 0, false);
+        }
+        float mx = 0.08f; for (int i = 0; i < n; i++) mx = std::max(mx, fp[i]);
+        const int cols = std::max(1, (int)(tw / 2)), per = std::max(1, (n + cols - 1) / cols), cnt = (n + per - 1) / per;
+        const float cy = wy + wh / 2, bw = tw * ((float)n * 0.01f / secs) / std::max(1, cnt);
+        for (int a = 0; a < cnt; a++) {
+            float v = 0; for (int j = a * per; j < std::min(n, (a + 1) * per); j++) v = std::max(v, fp[j]);
+            v = std::min(1.f, v / mx);
+            rrect({tx + a * bw, cy - std::max(0.5f, v * (wh / 2 - 3)), std::max(1.f, bw - 0.4f), std::max(1.f, v * (wh - 6))}, 0, kOrange);
+        }
+        const float hx = tx + std::min(tw, tw * (n * 0.01f / secs));
+        line(hx, r.y + 8, hx, wy + wh, kOrange, 2);
+        text(tx + tw - 4, r.y + 14, 9, kOrange, "REC " + num("%.1f", st_.freeSeconds) + " S", 2, true);
         return;
     }
     const float barSec = loopSec / std::max(1, st_.loopBars), pps = tw / loopSec;

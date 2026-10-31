@@ -94,7 +94,8 @@ public:
     void recorderStop();                  // trims, normalises and writes sample_*.wav; the result becomes the pending sample
     void recorderDismiss();               // the pending sample was taken over
     std::string lastSamplePath() const;
-    int livePeaks(float* out, int maxBins) const;   // one peak per 50 ms of the take in progress
+    int freePeaks(float* out, int maxBins) const;   // the first loop while it is recorded: one peak per 10 ms
+    int livePeaks(float* out, int maxBins) const;   // one peak per 10 ms of the take in progress
 
     // ---- library on disk ----
     void setDataDir(const std::string& dir);

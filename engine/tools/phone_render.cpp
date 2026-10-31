@@ -60,6 +60,9 @@ int main(int argc, char** argv) {
     app.micSample(); in.assign(512, 0.f); run(2.0); app.tick(now + 100);
     ui.setEditor(false); ui.frame(now); dump("deck_loaded"); ui.setEditor(true);
     tapAt(176 + 8 + 100, 44 + 8 + 66 + 142 + 6 + 10 + 12 + 17); ui.frame(now); dump("library");
+    app.loopClear(); run(0.3); app.selectTrack(0); app.loopRecord(); run(0.1);   // the first take, drawn while it is recorded
+    { int sq[] = {60, 67, 64, 72, 55}; for (int n : sq) { app.playNote(n, true); run(0.35); app.playNote(n, false); run(0.15); } }
+    ui.setEditor(false); ui.frame(now); dump("deck_firstrec"); ui.setEditor(true); app.loopRecord(); run(0.3);
     fprintf(f, "]}\n"); fclose(f);
     return 0;
 }

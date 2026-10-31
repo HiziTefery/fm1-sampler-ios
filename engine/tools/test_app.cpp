@@ -130,6 +130,11 @@ int main() {
       app.transportPlay(); run(1.2); const float ps = app.status().clipPos[0]; app.scrub(0, 0.6f); run(0.3); app.scrub(2, 0); run(0.8);
       CHECK(!app.status().playing && std::fabs(app.status().clipPos[0] - 0.6f) < 0.06f, "scrubbing a stopped tape moves it, it stays stopped afterwards (%.3f -> %.3f)", ps, app.status().clipPos[0]);
       app.loopClear(); run(0.3); }
+    {   // the first take can be drawn while it is recorded
+      app.selectTrack(0); app.loopClear(); run(0.3); app.loopRecord(); run(0.1); app.playNote(60, true); run(0.8); app.playNote(60, false); run(0.3);
+      float fp[64]; const int fn = s.freePeaks(fp, 64); float fm = 0; for (int i = 0; i < fn; i++) fm = std::max(fm, fp[i]);
+      CHECK(app.status().freeRecording && fn >= 15 && fm > 0.05f, "the first take has peaks while recording (%d bins, max %.3f)", fn, fm);
+      app.loopRecord(); run(0.3); app.loopClear(); run(0.3); }
     // microphone sample
     btn(SamplerApp::SAVE);
     enc(2, 1); run(0.3); CHECK(app.micState() == 1, "mic sampling waits for sound");

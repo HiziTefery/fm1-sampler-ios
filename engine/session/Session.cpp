@@ -71,6 +71,8 @@ struct Session::Impl {
     mutable std::mutex sampleMtx;
     std::atomic<float> micThr{0.04f};
     static constexpr int kLive = 2048;
+    static constexpr int kFreeBins = 18500;   // 10 ms per bin, a little over 3 minutes
+    std::atomic<float> freePk[kFreeBins]; std::atomic<int> freeN{0}; float freeAcc = 0; int freeCnt = 0;   // the first take, for the timeline while it is recorded
     std::atomic<float> livePk[kLive]; std::atomic<int> liveN{0}; size_t livePos = 0; float liveAcc = 0; int liveCnt = 0;
 
     // loop overview, refreshed in the background by the audio thread
@@ -132,6 +134,7 @@ struct Session::Impl {
         loopSamples = 0; a_loop = 0;
         freeArmed = true; a_freeArmed = true; freeRec = false; freeTrack = track;
         freeBuf.clear(); freeBuf.reserve((size_t)sr * 2 * 30);
+        freeN = 0; freeAcc = 0; freeCnt = 0;
         pos = 0; playing = false;
     }
     void freeStop() {
@@ -406,6 +409,13 @@ struct Session::Impl {
             t.peak.store(std::max(pk, t.peak.load() * 0.92f));
         }
         (void)anyEvents;
+        if (freeRec && freeBuf.size() >= freeBase + (size_t)n * 2) {
+            const int bin = std::max(1, sr / 100);
+            for (int i = 0; i < n; i++) {
+                freeAcc = std::max(freeAcc, std::max(std::fabs(freeBuf[freeBase + 2 * (size_t)i]), std::fabs(freeBuf[freeBase + 2 * (size_t)i + 1])));
+                if (++freeCnt >= bin && freeN < kFreeBins) { freePk[freeN.load()].store(freeAcc); freeN++; freeAcc = 0; freeCnt = 0; }
+            }
+        }
         a_clipPos.store(loopSamples > 0 ? (float)(tapePos / loopSamples) : 0.f);
         reverb.process(sendBus[0].data(), wet.data(), n);
         for (int i = 0; i < n * 2; i++) out[i] += wet[(size_t)i] * ret[0];
@@ -595,6 +605,11 @@ void Session::recorderStop() {
 }
 void Session::recorderDismiss() { std::lock_guard<std::mutex> l(d->sampleMtx); d->pending = false; d->a_pending = false; }
 std::string Session::lastSamplePath() const { std::lock_guard<std::mutex> l(d->sampleMtx); return d->samplePath; }
+int Session::freePeaks(float* out, int maxBins) const {
+    const int n = std::min(maxBins, d->freeN.load());
+    for (int i = 0; i < n; i++) out[i] = d->freePk[i].load();
+    return n;
+}
 int Session::livePeaks(float* out, int maxBins) const {
     const int n = std::min(maxBins, d->liveN.load());
     for (int i = 0; i < n; i++) out[i] = d->livePk[i].load();
