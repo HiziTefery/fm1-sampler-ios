@@ -108,40 +108,40 @@ void SamplerUI::topBar(Rect r) {
 }
 
 // ---- cassette deck ----
-// Flat and minimal, OP-1 like: dark ground, one surface tone, a line tone, paper white for content, orange for what is active or recording,
-// blue for the tape and the playhead. Six colours, no gradients or highlights. The deck has its own palette (it does not follow the theme).
+// Black, white, orange. Flat shapes only: no frames, no cards. White is content, orange is what is active or recording, the dim white is what is idle.
 namespace {
 constexpr float kPi = 3.14159265f;
-constexpr uint32_t kBg = theme::argb(24, 25, 29), kSurf = theme::argb(40, 42, 48), kLine = theme::argb(78, 81, 90), kPaper = theme::argb(236, 234, 226),
-    kOrange = theme::argb(255, 104, 40), kBlue = theme::argb(70, 130, 255), kInk = kBg, kDim = theme::argb(140, 140, 138);
+constexpr uint32_t kBg = theme::argb(0, 0, 0), kPaper = theme::argb(255, 255, 255), kOrange = theme::argb(255, 104, 40), kInk = kBg,
+    kLine = theme::argb(255, 255, 255, 46), kDim = theme::argb(255, 255, 255, 120);
 }
 
-// A roller: a ring with three spokes, turned by `ang`.
+// A roller: a white ring with three spokes, turned by `ang`.
 void SamplerUI::reel(float cx, float cy, float r, float ang) {
-    stroke({cx - r, cy - r, 2 * r, 2 * r}, r, kPaper, 2);
+    circle(cx, cy, r, kPaper);
+    circle(cx, cy, r - 2, kBg);
     for (int k = 0; k < 3; k++) { const float a = ang + k * 2 * kPi / 3; line(cx, cy, cx + (r - 3) * std::cos(a), cy + (r - 3) * std::sin(a), kPaper, 2); }
     circle(cx, cy, 3, kPaper);
 }
 
-// Level meter on a flat card (same place as the old VU face): label, a row of segments, the last ones orange.
+// Level meter: a thin bar, orange where it gets hot.
 void SamplerUI::vu(Rect r, float v, const std::string& name) {
-    rrect(r, 8, kSurf);
-    text(r.x + 12, r.y + 15, 9, kDim, name, 0, true);
-    const int n = 24; const float gap = 2, x = r.x + 12, w = r.w - 24, sw = (w - (n - 1) * gap) / n, y = r.y + 28, h = r.h - 40;
-    for (int i = 0; i < n; i++) rrect({x + i * (sw + gap), y, sw, h}, 1, i < (int)(clamp01(v) * n + 0.5f) ? (i >= n - 5 ? kOrange : kPaper) : kLine);
+    text(r.x, r.y + 15, 9, kDim, name, 0, true);
+    const float y = r.y + 28, h = 4, w = r.w, f = clamp01(v);
+    rrect({r.x, y, w, h}, 0, kLine);
+    rrect({r.x, y, w * std::min(f, 0.8f), h}, 0, kPaper);
+    if (f > 0.8f) rrect({r.x + w * 0.8f, y, w * (f - 0.8f), h}, 0, kOrange);
 }
 
-// A rotary knob on a knob of the app (drag up / down to turn).
+// A rotary knob on a knob of the app (drag up / down to turn): a white disc, a black pointer, orange dots for the value.
 void SamplerUI::knob(float cx, float cy, SamplerApp::Page page, int idx, bool) {
     auto k = app_.knobs(page);
     const auto& p = k[(size_t)idx];
     if (!p.valid) return;
-    const float R = 19, n = clamp01(p.norm);
+    const float R = 18, n = clamp01(p.norm);
     for (int j = 0; j <= 10; j++) { const float a = (-135.f + j * 27.f) * kPi / 180; circle(cx + std::sin(a) * (R + 7), cy - std::cos(a) * (R + 7), 1.5f, j / 10.f <= n + 0.001f ? kOrange : kLine); }
-    circle(cx, cy, R, kSurf);
-    stroke({cx - R, cy - R, 2 * R, 2 * R}, R, kLine, 1.5f);
+    circle(cx, cy, R, kPaper);
     const float a = (-135.f + n * 270.f) * kPi / 180;
-    line(cx + std::sin(a) * 5, cy - std::cos(a) * 5, cx + std::sin(a) * (R - 3), cy - std::cos(a) * (R - 3), kPaper, 3);
+    line(cx + std::sin(a) * 4, cy - std::cos(a) * 4, cx + std::sin(a) * (R - 3), cy - std::cos(a) * (R - 3), kInk, 3.5f);
     text(cx, cy + R + 16, 9, kDim, fit(p.name, 100, 9), 1, true);
     text(cx, cy + R + 29, 11, kPaper, p.value, 1, true);
     Rect hr{cx - 36, cy - R - 12, 72, 2 * R + 46};
@@ -154,10 +154,8 @@ void SamplerUI::cassette(Rect c) {
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const bool recNow = st_.freeRecording || st_.track_clip_rec[t];
     const int mic = app_.micState();
-    rrect(c, 10, kSurf);
     // label: paper strip with a coloured edge, the sample name, the counter
     Rect lb{c.x + 24, c.y + 12, c.w - 48, 50};
-    rrect(lb, 4, kPaper); rrect({lb.x, lb.y, 5, lb.h}, 2, recNow ? kOrange : kBlue);
     std::string title = app_.sampleLabel(t), sub = "TRACK " + std::to_string(t + 1) + "  " + SamplerApp::algoName(app_.algo());
     if (title.empty()) title = "EMPTY TRACK";
     if (mic == 1) { title = "WAITING FOR SOUND"; sub = "MICROPHONE  " + num("%.0f DB", 20 * std::log10(app_.micThreshold())); }
@@ -165,10 +163,10 @@ void SamplerUI::cassette(Rect c) {
     else if (mic == 3) title = "SAVING";
     const std::string ts = app_.toast();
     if (!ts.empty()) sub = ts;
-    text(lb.x + 28, lb.y + 14, 8.5f, kLine, fit(sub, lb.w - 130, 8.5f), 0, true);
-    text(lb.x + 28, lb.y + 31, 15, kInk, fit(title, lb.w - 56, 15), 0, true);
-    tri(lb.x + 18, lb.y + 15, lb.x + 12, lb.y + 23, lb.x + 18, lb.y + 31, kInk);
-    tri(lb.x + lb.w - 12, lb.y + 15, lb.x + lb.w - 6, lb.y + 23, lb.x + lb.w - 12, lb.y + 31, kInk);
+    text(lb.x + 28, lb.y + 14, 8.5f, kDim, fit(sub, lb.w - 130, 8.5f), 0, true);
+    text(lb.x + 28, lb.y + 31, 16, kPaper, fit(title, lb.w - 56, 15), 0, true);
+    tri(lb.x + 18, lb.y + 15, lb.x + 12, lb.y + 23, lb.x + 18, lb.y + 31, kPaper);
+    tri(lb.x + lb.w - 12, lb.y + 15, lb.x + lb.w - 6, lb.y + 23, lb.x + lb.w - 12, lb.y + 31, kPaper);
     tap({lb.x + 24, lb.y, lb.w - 48, lb.h}, [this] { sheetOpen_ = true; sheetScroll_ = std::max(0.f, (float)app_.libraryCursor() * 34.f - 100.f); app_.refreshLibrary(); });
     tap({lb.x, lb.y, 24, lb.h}, [this] { app_.browse(-1); });
     tap({lb.x + lb.w - 24, lb.y, 24, lb.h}, [this] { app_.browse(1); });
@@ -176,11 +174,10 @@ void SamplerUI::cassette(Rect c) {
     if (hasLoop) { lsec = (float)(st_.loopSamples / app_.session().sampleRate()); lp = loopPos(); psec = lp * lsec; }
     else if (st_.freeRecording) psec = lsec = st_.freeSeconds;
     char cnt[48]; snprintf(cnt, sizeof cnt, "%d:%04.1f / %d:%04.1f", (int)psec / 60, std::fmod(psec, 60.f), (int)lsec / 60, std::fmod(lsec, 60.f));
-    text(lb.x + lb.w - 22, lb.y + 14, 9, kInk, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
+    text(lb.x + lb.w - 22, lb.y + 14, 9, kPaper, hasLoop || st_.freeRecording ? cnt : "NO LOOP", 2, true);
     if (recNow || st_.freeArmed) { if (recNow || (now_ / 400) % 2 == 0) circle(lb.x + lb.w - 14, lb.y + 33, 4.5f, kOrange); }
     // the tape loop: one closed ribbon round two rollers; it runs once round per loop, the orange dot is the splice = the start of the loop
     Rect wd{c.x + c.w * 0.07f, lb.y + lb.h + 8, c.w * 0.86f, c.h - (lb.h + 12) - 8 - 32 + 14};
-    rrect(wd, 8, kBg);
     const float cy = wd.y + wd.h / 2, rho = wd.h / 2 - 10, rr = rho - 5;
     const float cxL = wd.x + wd.w * 0.27f, cxR = wd.x + wd.w * 0.73f, L = cxR - cxL, arc = kPi * rho, per = 2 * L + 2 * arc;
     const float turn = hasLoop ? lp : st_.freeRecording ? std::fmod((float)now_ / 2500.f, 1.f) : 0.f;
@@ -194,9 +191,8 @@ void SamplerUI::cassette(Rect c) {
     reel(cxL, cy, rr, -turn * 2 * kPi * 3); reel(cxR, cy, rr, -turn * 2 * kPi * 3);
     float px, py, x, y; at(0, px, py);
     const int segs = 80;
-    for (int i = 1; i <= segs; i++) { at(per * i / segs, x, y); line(px, py, x, y, recNow ? kOrange : kBlue, 4); px = x; py = y; }
-    for (int i = 0; i < 24; i++) { at(turn * per + per * i / 24, x, y); circle(x, y, 1.3f, kBg); }   // marks on the tape: they show the motion
-    at(turn * per, x, y); circle(x, y, 5.5f, recNow ? kPaper : kOrange);
+    for (int i = 1; i <= segs; i++) { at(per * i / segs, x, y); line(px, py, x, y, recNow ? kOrange : kPaper, 3); px = x; py = y; }
+    at(turn * per, x, y); circle(x, y, 6, recNow ? kPaper : kOrange);
 }
 
 float SamplerUI::loopPos() const {
@@ -207,21 +203,18 @@ float SamplerUI::loopPos() const {
 
 // Timeline of the selected track: a ruler with bars and seconds, the loop's waveform, the playhead. Drag anywhere on it to scrub.
 void SamplerUI::timeline(Rect r) {
-    rrect(r, 8, kSurf);
     const int t = app_.track();
     const float chh = (r.h - 16 - 3 * 4) / 4;
     for (int i = 0; i < 8; i++) {   // the eight tracks
         Rect c{r.x + 4 + (i % 2) * 25.f, r.y + 8 + (i / 2) * (chh + 4), 22, chh};
         const bool sel = i == t;
-        rrect(c, 4, sel ? kOrange : kBg);
-        text(c.x + 11, c.y + chh / 2 - 1, 11, sel ? kInk : kPaper, std::to_string(i + 1), 1, true);
-        if (st_.track_clip_rec[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 1, sel ? kInk : kOrange); else if (st_.track_has_clip[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 1, sel ? kInk : kBlue);
+                text(c.x + 11, c.y + chh / 2 - 1, 12, sel ? kOrange : kDim, std::to_string(i + 1), 1, true);
+        if (st_.track_clip_rec[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 0, kOrange); else if (st_.track_has_clip[i]) rrect({c.x + 5, c.y + chh - 6, 12, 2}, 0, sel ? kOrange : kPaper);
         tap({c.x - 2, c.y - 2, c.w + 4, c.h + 4}, [this, i] { app_.selectTrack(i); });
     }
     const float tx = r.x + 54, tw = r.w - 54 - 6, rh = 28, wy = r.y + rh + 8, wh = r.h - rh - 16;
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
     const float sr = (float)app_.session().sampleRate(), loopSec = hasLoop ? (float)(st_.loopSamples / sr) : 0.f;
-    rrect({tx, wy, tw, wh}, 4, kBg);
     if (!hasLoop) {
         const bool rec = st_.freeRecording;
         text(tx + tw / 2, r.y + r.h / 2, 11, rec ? kOrange : kDim, rec ? "RECORDING " + num("%.1f", st_.freeSeconds) + " S" : "NO LOOP: PRESS REC AND PLAY", 1, true);
@@ -232,7 +225,6 @@ void SamplerUI::timeline(Rect r) {
     for (int b = 0; b <= st_.loopBars; b++) {   // bars: numbers and beats on top, a thin line through the waveform
         const float x = tx + b * barPx;
         if (b < st_.loopBars) {
-            if (barPx >= 26) for (int q = 1; q < 4; q++) line(x + q * barPx / 4, r.y + 8, x + q * barPx / 4, r.y + 13, kLine, 1);
             if (b % every == 0) { line(x, r.y + 8, x, r.y + 19, kPaper, 1.2f); text(x + 4, r.y + 14, 9, kPaper, std::to_string(b + 1), 0, true); }
         }
         if (b % every == 0 || b == st_.loopBars) line(x, wy, x, wy + wh, kLine, 1);
@@ -253,19 +245,18 @@ void SamplerUI::timeline(Rect r) {
         for (int i = 0; i < n; i++) { const float v = std::min(1.f, pk[i] / mx); if (v > 0.01f) rrect({tx + i * bw, cy - v * (wh / 2 - 3), std::max(1.f, bw - 0.4f), std::max(1.f, v * (wh - 6))}, 0, rec ? kOrange : kPaper); }
     } else text(tx + tw / 2, wy + wh / 2, 10, kDim, "TRACK " + std::to_string(t + 1) + " HAS NO LOOP", 1, true);
     const float hx = tx + std::min(1.f, loopPos()) * tw;
-    line(hx, r.y + 8, hx, wy + wh, kBlue, 2);
-    tri(hx - 5, r.y + 6, hx + 5, r.y + 6, hx, r.y + 14, kBlue);
+    line(hx, r.y + 8, hx, wy + wh, kOrange, 2);
+    tri(hx - 5, r.y + 6, hx + 5, r.y + 6, hx, r.y + 14, kOrange);
     auto seek = [this, tx, tw](float x, float) { app_.seek(clamp01((x - tx) / tw)); };
     hit({tx, r.y, tw, r.h}, seek, seek);
 }
 
 void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool) {
-    rrect(r, 6, on ? kOrange : kSurf);
-    const uint32_t ink = on ? kInk : kPaper;
+    const uint32_t ink = on ? kOrange : kPaper;
     const float cx = r.x + r.w / 2, cy = r.y + r.h / 2 - 5;
     if (icon == 1) tri(cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, ink);
     else if (icon == 2) { rrect({cx - 6, cy - 7, 4.5f, 14}, 0, ink); rrect({cx + 2, cy - 7, 4.5f, 14}, 0, ink); }
-    else if (icon == 3) circle(cx, cy, 6.5f, on ? kInk : kOrange);
+    else if (icon == 3) circle(cx, cy, 6.5f, kOrange);
     text(cx, icon ? r.y + r.h - 9 : r.y + r.h / 2, 9, ink, label, 1, true);
     tap(r, std::move(f));
 }
@@ -273,10 +264,9 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
 void SamplerUI::deck(Rect r) {
     rrect({0, 0, W_, H_}, 0, kBg);
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
-    text(24, 18, 10, kDim, "FM-1 SAMPLER  8 TRACK", 0, true);
     text(W_ / 2, 18, 11, recOn || armed ? kOrange : kPaper, app_.loopText() + "   SRC " + std::string(app_.knobs(SamplerApp::P_SAVE)[1].value), 1, true);
     tap({W_ / 2 - 150, 4, 300, 28}, [this] { auto k = app_.knobs(SamplerApp::P_SAVE); k[1].step(k[1].norm > 0.5f ? -1 : 1); });
-    circle(W_ - 24, 18, 4, linkMidi_ && linkAudio_ ? kBlue : linkMidi_ ? kOrange : kLine);
+    circle(W_ - 24, 18, 4, linkMidi_ && linkAudio_ ? kPaper : linkMidi_ ? kOrange : kLine);
     text(W_ - 34, 18, 9.5f, kDim, std::string(linkMidi_ ? "FM-1  " : "NO FM-1  ") + "CPU " + num("%.0f", st_.cpu_permille / 10.0) + "%", 2, true);
     const float top = 34, ch = 176, cw = std::min(ch * 1.75f, W_ * 0.42f);
     const float cxl = 28, zr = W_ - 24, x0 = cxl + cw + 26, w0 = zr - x0;
@@ -287,11 +277,10 @@ void SamplerUI::deck(Rect r) {
     vu({x0, top + 4, vw, vh}, vl, "MASTER");
     vu({x0 + vw + 14, top + 4, vw, vh}, vr, "TRACK " + std::to_string(app_.track() + 1));
     const float py = top + vh + 24;
-    text(x0, py, 9, kDim, "PAGE", 0, true);
-    text(x0 + 36, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
+    text(x0, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
     for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
         Rect nr{zr - (10 - i) * 22.f, py - 11, 22, 22};
-        rrect({nr.x + 3, py - 3, 16, 6}, 3, kTabs[i] == app_.page() ? kOrange : kLine);
+        rrect({nr.x + 3, py - 3, 16, 6}, 0, kTabs[i] == app_.page() ? kOrange : kLine);
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 46, app_.page(), i);
@@ -314,7 +303,7 @@ void SamplerUI::deck(Rect r) {
     for (size_t i = 0; i < ks.size(); i++) {
         Rect kr{(W_ - total) / 2 + i * (kw + gap), ty, kw, 36};
         key(kr, ks[i].l, ks[i].icon, ks[i].on, ks[i].f, false);
-        if (i == 1 && armed) stroke(kr, 6, kOrange, 2);
+        if (i == 1 && armed && (now_ / 400) % 2 == 0) rrect({kr.x, kr.y + kr.h - 3, kr.w, 3}, 0, kOrange);
     }
 }
 
@@ -508,13 +497,12 @@ void SamplerUI::librarySheet() {
 
 // PROJECT menu: what used to be the SAVE / CLEAR buttons of the FM-1 (and more) on the screen.
 void SamplerUI::projectSheet() {
-    rrect({0, 0, W_, H_}, 0, theme::withAlpha(0xff000000, 200));
+    rrect({0, 0, W_, H_}, 0, theme::withAlpha(0xff000000, 235));
     tap({0, 0, W_, H_}, [this] { projectOpen_ = false; });
     const float bw = std::min(460.f, W_ - 40), bh = 38, gap = 8;
     const int t = app_.track();
     const bool hasClip = st_.track_has_clip[t], any = app_.loopExists();
     const Rect box{(W_ - bw) / 2, 22, bw, H_ - 44};
-    rrect(box, 10, kSurf);
     tap(box, [] {});
     text(box.x + 18, box.y + 22, 15, kOrange, "PROJECT", 0, true);
     key({box.x + box.w - 84, box.y + 8, 72, 30}, "CLOSE", 0, false, [this] { projectOpen_ = false; }, false);
@@ -523,9 +511,8 @@ void SamplerUI::projectSheet() {
     float y = box.y + 66;
     auto row = [&](const std::string& label, const std::string& hint, bool enabled, bool hot, std::function<void()> f) {
         Rect r{box.x + 18, y, box.w - 36, bh};
-        rrect(r, 6, hot ? kOrange : kBg);
-        text(r.x + 14, r.y + bh / 2 - 6, 11.5f, hot ? kInk : enabled ? kPaper : kLine, label, 0, true);
-        text(r.x + 14, r.y + bh / 2 + 9, 8.5f, hot ? kInk : kDim, hint, 0, false);
+        text(r.x + 10, r.y + bh / 2 - 6, 11.5f, hot ? kOrange : enabled ? kPaper : kLine, label, 0, true);
+        text(r.x + 10, r.y + bh / 2 + 9, 8.5f, kDim, hint, 0, false);
         tap(r, std::move(f));
         y += bh + gap;
     };

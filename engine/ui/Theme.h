@@ -16,8 +16,8 @@ inline bool light = false;
 inline void apply(bool lightVariant) {
     light = lightVariant;
     const uint32_t paper = argb(237, 235, 228), ink = argb(20, 20, 26);
-    ACCENT = argb(232, 163, 61);                       // amber: playhead, selection, recording
-    if (!light) { BG = ink; SURFACE = argb(28, 28, 36); RAISED = argb(40, 40, 50); OUTLINE = argb(66, 66, 78); TEXT = paper; DIM = argb(138, 136, 128); }
+    ACCENT = argb(255, 104, 40);                       // orange: playhead, selection, recording
+    if (!light) { BG = argb(0, 0, 0); SURFACE = argb(16, 16, 16); RAISED = argb(34, 34, 34); OUTLINE = argb(64, 64, 64); TEXT = argb(255, 255, 255); DIM = argb(130, 130, 130); }
     else { BG = paper; SURFACE = argb(226, 223, 214); RAISED = argb(212, 209, 198); OUTLINE = argb(168, 165, 154); TEXT = ink; DIM = argb(110, 108, 100); }
     ON_ACCENT = ink;
     VIOLET = TEXT; GREEN = TEXT; RED = ACCENT; AMBER = ACCENT;
