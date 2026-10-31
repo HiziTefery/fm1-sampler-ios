@@ -63,6 +63,7 @@ public:
     void transportPlay();
     void loopRecord();                            // REC: arm / end the first take, or toggle overdub once a loop exists
     void lenAction(bool dbl);
+    void seek(float fraction) { s_.seek(fraction); }   // phone timeline: scrub the playhead
     void loopSave();
     void loopClear();                             // every loop of every track (phone PROJECT menu)
     void loopClearTrack();                        // the loop of the selected track

@@ -40,7 +40,7 @@ private:
     void cassette(Rect r);
     void vu(Rect r, float v, const std::string& name);
     void knob(float cx, float cy, SamplerApp::Page page, int idx, bool unused = false);
-    void tapeStrip(Rect r);
+    void timeline(Rect r);
     void key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot);
     float loopPos() const;
     void reel(float cx, float cy, float r, float ang);

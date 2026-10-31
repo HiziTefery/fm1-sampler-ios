@@ -489,6 +489,13 @@ void Session::loopHalve() {
         if (d->tapePos >= h) d->tapePos = std::fmod(d->tapePos, (double)h);
     });
 }
+void Session::seek(float f) {
+    d->post([this, f] {
+        if (d->loopSamples <= 0 || d->freeRec) return;
+        const double p = clampf(f, 0.f, 0.9999f) * d->loopSamples;
+        d->pos = p; d->tapePos = p;
+    });
+}
 void Session::setLoopSpeed(float v) { d->tapeSpeed.store(clampf(v, 0.25f, 2.f)); }
 void Session::setLoopSource(int src) { d->post([=] { d->loopSrc = src ? 1 : 0; }); }
 bool Session::saveClip(int t) {

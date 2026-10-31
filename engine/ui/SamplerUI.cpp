@@ -239,40 +239,63 @@ float SamplerUI::loopPos() const {
     return st_.track_has_clip[t] ? st_.clipPos[t] : (float)(st_.pos / st_.loopSamples);
 }
 
-// The eight loops as tape strips. The tape runs under a fixed head in the middle: the loop is drawn repeated, shifted by the position.
-void SamplerUI::tapeStrip(Rect r) {
+// Timeline of the selected track: a ruler with bars and seconds, the loop's waveform, the playhead. Drag anywhere on it to scrub.
+void SamplerUI::timeline(Rect r) {
     rrect({r.x - 2, r.y - 2, r.w + 4, r.h + 4}, 5, kMetal);
     rrect(r, 3, kGlass);
-    const float lane = (r.h - 6 - 7 * 2) / 8, lbl = 22, tx = r.x + lbl, tw = r.w - lbl - 4, cxh = tx + tw / 2;
-    const float lp = loopPos(), Lpx = tw * 0.7f;
-    float mx = 0.08f; float pk[8][Session::kLoopBins]; int n[8];
-    for (int i = 0; i < 8; i++) { n[i] = app_.session().loopPeaks(i, pk[i], Session::kLoopBins); for (int j = 0; j < n[i]; j++) mx = std::max(mx, pk[i][j]); }
+    const int t = app_.track();
+    // the eight tracks as chips on the left
     for (int i = 0; i < 8; i++) {
-        const float y = r.y + 3 + i * (lane + 2), cy = y + lane / 2;
-        const bool sel = i == app_.track(), rec = st_.track_clip_rec[i];
-        rrect({r.x + 3, y, r.w - 6, lane}, 2, sel ? kPanelHi : kPanel);
-        text(r.x + 12, cy, 8.5f, sel ? kAmber : kMetal, std::to_string(i + 1), 1, true);
-        tap({r.x, y - 1, r.w, lane + 2}, [this, i] { app_.selectTrack(i); });
-        clip({tx, y, tw, lane});
-        rrect({tx, cy - 1, tw, 2}, 0, kTape);   // the tape itself
-        if (n[i] > 0) {
-            const int cols = std::max(1, (int)(Lpx / 1.5f)), per = std::max(1, n[i] / cols), cnt = (n[i] + per - 1) / per;
-            const float bw = Lpx / cnt;
-            for (int k = -2; k <= 2; k++)
-                for (int a = 0; a < cnt; a++) {
-                    const float x = cxh + (a * bw - lp * Lpx) + k * Lpx;
-                    if (x + bw < tx || x > tx + tw) continue;
-                    float v = 0; for (int j = a * per; j < std::min(n[i], (a + 1) * per); j++) v = std::max(v, pk[i][j]);
-                    v = std::min(1.f, v / mx);
-                    if (v > 0.02f) rrect({x, cy - v * lane / 2, std::max(1.f, bw - 0.3f), std::max(1.f, v * lane)}, 0, rec ? kAmber : sel ? kReel : theme::argb(170, 168, 160));
-                }
-            if (st_.freeRecording || rec) {}   // the take is drawn once it exists
-        }
-        endClip();
+        Rect c{r.x + 4 + (i % 2) * 21.f, r.y + 4 + (i / 2) * 20.f, 19, 18};
+        const bool sel = i == t;
+        rrect(c, 2, sel ? kAmber : kPanelHi);
+        text(c.x + 9.5f, c.y + 8, 9.5f, sel ? kInk : kPaper, std::to_string(i + 1), 1, true);
+        if (st_.track_clip_rec[i]) rrect({c.x + 3, c.y + 14, 13, 2}, 0, kRed); else if (st_.track_has_clip[i]) rrect({c.x + 3, c.y + 14, 13, 2}, 0, sel ? kInk : kAmber);
+        tap({c.x - 1, c.y - 1, c.w + 2, c.h + 2}, [this, i] { app_.selectTrack(i); });
     }
-    // the head: fixed line in the middle with a marker
-    line(cxh, r.y + 1, cxh, r.y + r.h - 1, st_.freeRecording || st_.track_clip_rec[app_.track()] ? kRed : kAmber, 1.5f);
-    tri(cxh - 5, r.y - 6, cxh + 5, r.y - 6, cxh, r.y + 1, kAmber);
+    const float tx = r.x + 52, tw = r.w - 52 - 6, rh = 25, wy = r.y + rh + 3, wh = r.h - rh - 6;
+    const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
+    const float sr = (float)app_.session().sampleRate(), loopSec = hasLoop ? (float)(st_.loopSamples / sr) : 0.f;
+    rrect({tx, r.y + 3, tw, rh}, 2, kPanel);
+    rrect({tx, wy, tw, wh}, 2, kPanel);
+    if (!hasLoop) {
+        const bool rec = st_.freeRecording;
+        text(tx + tw / 2, r.y + r.h / 2, 11, rec ? kRed : kMetal, rec ? "RECORDING " + num("%.1f", st_.freeSeconds) + " S" : "NO LOOP: PRESS REC AND PLAY", 1, true);
+        return;
+    }
+    const float barSec = loopSec / std::max(1, st_.loopBars), pps = tw / loopSec;
+    // ruler: bars (numbers, beat ticks) on top, seconds below
+    const float barPx = barSec * pps; const int every = barPx >= 26 ? 1 : barPx >= 13 ? 2 : barPx >= 7 ? 4 : 8;
+    for (int b = 0; b <= st_.loopBars; b++) {
+        const float x = tx + b * barPx;
+        if (b < st_.loopBars) {
+            if (barPx >= 26) for (int q = 1; q < 4; q++) line(x + q * barPx / 4, r.y + 3, x + q * barPx / 4, r.y + 8, kShellHi, 1);
+            if (b % every == 0) { line(x, r.y + 3, x, r.y + 13, kMetal, 1.2f); text(x + 3, r.y + 9, 8.5f, kPaper, std::to_string(b + 1), 0, true); }
+        }
+        if (b % every == 0 || b == st_.loopBars) line(x, wy, x, wy + wh, b % every == 0 ? kShellHi : kPanel, 1);
+    }
+    static const float steps[] = {0.5f, 1, 2, 5, 10, 15, 30, 60, 120};
+    float step = 120; for (float sp : steps) if (sp * pps >= 44) { step = sp; break; }
+    for (float sec = 0; sec <= loopSec + 0.001f; sec += step) {
+        const float x = tx + sec * pps;
+        line(x, r.y + 17, x, r.y + 3 + rh, kMetal, 1);
+        char lb[16]; if (loopSec >= 60) snprintf(lb, sizeof lb, "%d:%02d", (int)sec / 60, (int)sec % 60); else snprintf(lb, sizeof lb, step < 1 ? "%.1fs" : "%.0fs", sec);
+        if (x + 26 < tx + tw) text(x + 3, r.y + 21, 8, kMetal, lb, 0, false);
+    }
+    // waveform of this track's loop
+    float pk[Session::kLoopBins]; const int n = app_.session().loopPeaks(t, pk, Session::kLoopBins);
+    const bool rec = st_.track_clip_rec[t];
+    if (n > 0 && st_.track_has_clip[t]) {
+        float mx = 0.08f; for (int i = 0; i < n; i++) mx = std::max(mx, pk[i]);
+        const float cy = wy + wh / 2, bw = tw / n;
+        for (int i = 0; i < n; i++) { const float v = std::min(1.f, pk[i] / mx); if (v > 0.01f) rrect({tx + i * bw, cy - v * (wh / 2 - 2), std::max(1.f, bw - 0.3f), std::max(1.f, v * (wh - 4))}, 0, rec ? kAmber : kReel); }
+    } else text(tx + tw / 2, wy + wh / 2, 10, kMetal, "TRACK " + std::to_string(t + 1) + " HAS NO LOOP", 1, true);
+    // playhead
+    const float hx = tx + std::min(1.f, loopPos()) * tw;
+    line(hx, r.y + 3, hx, wy + wh, rec || st_.freeRecording ? kRed : kAmber, 1.6f);
+    tri(hx - 5, r.y + 1, hx + 5, r.y + 1, hx, r.y + 9, rec || st_.freeRecording ? kRed : kAmber);
+    auto seek = [this, tx, tw](float x, float) { app_.seek(clamp01((x - tx) / tw)); };
+    hit({tx, r.y, tw, r.h}, seek, seek);
 }
 
 void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot) {
@@ -322,7 +345,7 @@ void SamplerUI::deck(Rect r) {
     const float ky = py + 52;
     for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, ky, app_.page(), i);
     // the loops
-    tapeStrip({24, top + ch + 16, W_ - 48, 84});
+    timeline({24, top + ch + 16, W_ - 48, 84});
     // transport keys
     const float ty = H_ - 46, kw = std::min(84.f, (W_ - 60) / 9.f), gap = 6;
     struct K { const char* l; int icon; bool on; std::function<void()> f; };
