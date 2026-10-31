@@ -9,7 +9,7 @@ FM-1 second screen (240x240, from the host simulator `app_sim`: sample, edit, en
 
 ![FM-1 screens](shots/readme_fm1.png)
 
-Phone app, main screen = the tape deck (frameless, black / white / orange): the cassette with a tape loop, PLAY / STOP / REC / CLEAR under it, the sample of the selected track with its mode and sounding voices, the four knobs of the current page, one timeline of the selected track:
+Phone app, main screen = the tape deck (light theme by default, the dark one is one tap away; ink / dim / orange): the tape loop, PLAY / STOP / REC / CLEAR under it, the sample of the selected track with its mode and sounding voices, the four knobs of the current page, one timeline of the selected track:
 
 ![Cassette deck](shots/readme_deck.png)
 
@@ -51,13 +51,17 @@ APK and the flash page of the matching firmware are attached to the [releases](.
 - Auto-tune (tuning fork pictogram in the sample view, MELODIC and ONE-SHOT only): `dsp/Pitch.h` (YIN on the loudest window of the first 1.5 s) finds the pitch, the track's root note becomes that pitch (`Sampler::setRoot`), so the keys sound the right notes; tap again to reset. A new sample resets it. The phone CLEAR key clears the loop of the selected track.
 
 ## Phone screen (the deck)
-Laid out for 400 units of height on one grid (margin 14; the header text line y = 20; knob values and transport labels y = 205). No header bar, no frames.
-- **Cassette** (top left): paper label with the track number (orange, tap = next track), the sample name (tap = library, arrows browse), the loop counter; below it a tape LOOP: one closed ribbon over a big and a small wheel and one roller inside the loop that pushes it out (built from common tangents + arcs), it runs once round per loop, the orange dot is the splice = loop start. Without a loop it stands still.
-- **Transport** under the cassette: PLAY, STOP, REC (OVERDUB when a loop exists), CLEAR (clears the loop of the selected track). While recording PLAY / STOP only ends the recording (the loop plays on), the next press stops the tape. Start and stop are tape-like (run-up 0.45 s, slow-down 0.7 s, level follows the speed).
-- **Sample view** (top right): the waveform of the track's sample with the playback window bright, the playback mode on top (tap = next mode), one orange line per sounding voice (constant brightness, its height follows the voice envelope, so it shrinks as the sample dies away), pictograms for auto-tune (tuning fork, MELODIC / ONE-SHOT only), microphone, file from disk, library. While a microphone take waits for sound the view shows the input level and two trigger lines (drag up / down to set the level) and one STOP / CANCEL button; while it records, the growing take (normalised).
-- **Page** (middle right): the name of the current page (orange) and ten notches (tap one = that page, like the FM-1 buttons); under them the four knobs of the page (drag up / down), the same parameters as K1..K4 on the FM-1.
-- **Timeline** (bottom): ruler with bars and seconds, the waveform of the selected track's loop, the playhead. Drag = tape scrub (`Session::scrubBegin / scrubMove / scrubEnd`): the tape follows the finger with a smoothed speed (up to 6x, forward and backward, the pitch follows like a hand on a reel, no clicks); when the finger lifts the tape returns to the transport speed or stops where it is. The first take of a clean looper is drawn here while it is recorded.
-- Pictogram in the bottom right corner = switch to the EDIT view. The PROJECT menu (`projectSheet`: save loop, clear loop, clear all (tap twice), loop x2 / /2, loop source) is kept in the code but nothing opens it for now.
+One visual system (light by default, dark one tap away): one grid, one line weight (2.7 units), ink + a dim tone + one orange for what is live, solid shapes, no frames, no cards. Laid out for 400 units of height, margin 24.
+- **Header** (top left): the track number (orange, tap = next track), the sample name (tap = library) and under it the position in the loop (a toast or the microphone state replaces it for a moment).
+- **Tape loop**: one closed ribbon over a big and a small wheel and one roller inside the loop that pushes it out (built from common tangents + arcs), it runs once round per loop, the orange dot is the splice = loop start. Without a loop it stands still.
+- **Transport** under it, icons only: PLAY, STOP, REC (OVERDUB when a loop exists), CLEAR (clears the loop of the selected track); the active one is orange with an underline. While recording PLAY / STOP only ends the recording (the loop plays on), the next press stops the tape. Start and stop are tape-like (run-up 0.45 s, slow-down 0.7 s, level follows the speed).
+- **Tools column** (middle, 64 units pitch, the lowest icon on the transport row): theme (light / dark, remembered in `<data dir>/theme`), microphone, file from disk, project menu (`projectSheet`: save / clear loop, clear all (tap twice), loop x2 and /2, loop source, open the editor).
+- **Sample view** (top right): the waveform with the playback window dark, the playback mode on top (tap = next mode), one orange line per sounding voice (height follows the voice envelope), the voice count, the tuning fork (auto-tune, MELODIC / ONE-SHOT only). While a microphone take waits for sound the view shows the input level and two trigger lines (drag up / down to set the level) and one STOP / CANCEL button; while it records, the growing take (normalised).
+- **Page**: the name of the current page (orange) with ten notches (tap one = that page, like the FM-1 buttons); under them the four knobs of the page (ring + orange arc + pointer, drag up / down), the same parameters as K1..K4 on the FM-1.
+- **Timeline** (bottom): bar numbers, the waveform of the selected track's loop (played = ink, to come = dim), the orange playhead. Drag = tape scrub (`Session::scrubBegin / scrubMove / scrubEnd`): the tape follows the finger with a smoothed speed (up to 6x, forward and backward, the pitch follows like a hand on a reel, no clicks); when the finger lifts the tape returns to the transport speed or stops where it is. While the first take is recorded its waveform grows here.
+- The old editor (EDIT view) is opened from the project menu; its DECK button comes back. It uses the same theme.
+
+**FM-1 screen** (240x240) uses the same system (`SamplerApp::draw`, colours from `ui/Theme.h`, so it follows the phone's theme): track number and sample name, the transport state as the same pictogram, the page name with eight track notches, a 46 px picture of the page (waveform, ADSR, LFO, mixer, key, loop length, microphone level), the loop line, four values (3x pixel font, 2x when longer than six characters) with orange bars, the button hint.
 
 ## FM-1 LEDs
 The active page button is lit. The firmware may light or clear a button LED by itself when it is pressed, so the LED frame (SysEx 01) is resent after every button event and every 400 ms.
@@ -99,5 +103,5 @@ Host-tested only (test_app all green, screenshots of both screens checked). **No
 
 ## Branches
 - `main` = v0.10.
-- `cassette-deck` = v0.11 .. v0.29 (this README): the phone screen is the tape deck; no patterns and no punch-in effects; the FM-1 screen is unchanged.
+- `cassette-deck` = v0.11 .. v0.30 (this README): the phone screen is the tape deck; no patterns and no punch-in effects; the FM-1 screen is unchanged.
 - `patterns-punchin`: the parked patterns (LEN + keys 1..8) and punch-in effects (MIXER keys), host-tested.

@@ -37,6 +37,8 @@ private:
 
     void topBar(Rect r);
     void deck(Rect r);
+    void icon(int kind, float cx, float cy, uint32_t c);
+    void setLight(bool on);
     void cassette(Rect r);
     void sampleView(Rect r);
     void knob(float cx, float cy, SamplerApp::Page page, int idx, bool unused = false);
