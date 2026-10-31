@@ -387,31 +387,32 @@ void SamplerUI::key(Rect r, const std::string& label, int icon, bool on, std::fu
 void SamplerUI::deck(Rect r) {
     rrect({0, 0, W_, H_}, 0, kBg);
     const bool recOn = st_.freeRecording || st_.track_clip_rec[app_.track()], armed = st_.freeArmed;
-    const float top = 0, ch = 170, cw = std::min(ch * 1.75f, W_ * 0.42f);
-    const float cxl = 10, zr = W_ - 20, x0 = cxl + cw + 24, w0 = zr - x0;
+    // one grid: a margin M on all four sides; the cassette label, the sample view header and the counter share one text line (y = 20),
+    // the knob values and the transport labels share one line (y = 205), the timeline starts and ends on the same vertical lines as everything above it
+    const float M = 14, top = 0, ch = 170, cw = std::min(ch * 1.75f, W_ * 0.42f);
+    const float cxl = M - 10, zr = W_ - M, x0 = cxl + cw + 24, w0 = zr - x0;
     cassette({cxl, top, cw, ch});
-    const float vh = 100;
-    sampleView({x0, top + 2, w0, vh});
-    const float py = top + vh + 24;
+    const float py = 123, vh = py - 22 - 12;
+    sampleView({x0, 12, w0, vh});
     text(x0, py, 15, kOrange, SamplerApp::pageName(app_.page()), 0, true);
     for (int i = 0; i < 10; i++) {   // the pages as notches: tap one to go there (the FM-1 buttons do the same)
         Rect nr{zr - (10 - i) * 22.f, py - 11, 22, 22};
         rrect({nr.x + 3, py - 3, 16, 6}, 0, kTabs[i] == app_.page() ? kOrange : kLine);
         tap(nr, [this, i] { app_.gotoPage(kTabs[i]); });
     }
-    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);
+    for (int i = 0; i < 4; i++) knob(x0 + w0 * (i + 0.5f) / 4, py + 40, app_.page(), i);   // the values sit at y = py + 82 = 205
     // transport under the cassette: PLAY, STOP, REC / OVERDUB; PROJECT and EDIT at the right end of the same row
-    const float ty = top + ch + 8, kh = 36, tg = 6, tkw = (cw - 3 * tg) / 4;
-    key({cxl, ty, tkw, kh}, "PLAY", 1, st_.playing, [this] { app_.transportSet(true); }, false);
-    key({cxl + tkw + tg, ty, tkw, kh}, "STOP", 4, false, [this] { app_.transportSet(false); }, false);
-    key({cxl + 2 * (tkw + tg), ty, tkw, kh}, app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }, false);
-    if (armed && (now_ / 400) % 2 == 0) rrect({cxl + 2 * (tkw + tg), ty + kh - 3, tkw, 3}, 0, kOrange);
-    key({cxl + 3 * (tkw + tg), ty, tkw, kh}, "CLEAR", 5, false, [this] { app_.loopClearTrack(); }, false);   // the loop of the selected track
+    const float ty = top + ch + 8, kh = 36, tg = 6, tkw = (cw - 8 - 3 * tg) / 4, tx0 = cxl + 4;   // the keys span the label above them
+    key({tx0, ty, tkw, kh}, "PLAY", 1, st_.playing, [this] { app_.transportSet(true); }, false);
+    key({tx0 + tkw + tg, ty, tkw, kh}, "STOP", 4, false, [this] { app_.transportSet(false); }, false);
+    key({tx0 + 2 * (tkw + tg), ty, tkw, kh}, app_.loopExists() ? "OVERDUB" : "REC", 3, recOn, [this] { app_.loopRecord(); }, false);
+    if (armed && (now_ / 400) % 2 == 0) rrect({tx0 + 2 * (tkw + tg), ty + kh - 3, tkw, 3}, 0, kOrange);
+    key({tx0 + 3 * (tkw + tg), ty, tkw, kh}, "CLEAR", 5, false, [this] { app_.loopClearTrack(); }, false);   // the loop of the selected track
     // (the PROJECT key is muted for now: projectSheet() stays, nothing opens it)
     const float tl = ty + kh + 10;
-    timeline({12, tl, W_ - 24, H_ - 12 - tl});
+    timeline({M - 6, tl, W_ - 2 * M + 12, H_ - M - tl});
     {   // the view switch: a pictogram of sliders in the bottom right corner opens the editor
-        const float sx = W_ - 20, sy = H_ - 20;
+        const float sx = W_ - M - 4, sy = H_ - M - 4;
         rrect({sx - 18, sy - 18, 36, 36}, 0, kBg);
         for (int i = 0; i < 3; i++) { line(sx - 11, sy - 8 + i * 8, sx + 11, sy - 8 + i * 8, kPaper, 1.6f); circle(sx - 5 + (i == 1 ? 9 : i == 2 ? 3 : 0), sy - 8 + i * 8, 3, kPaper); }
         tap({sx - 28, sy - 28, 56, 56}, [this] { editor_ = true; });

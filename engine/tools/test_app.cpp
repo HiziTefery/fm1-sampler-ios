@@ -108,6 +108,11 @@ int main() {
       s.loadSamplePath("/tmp/fm1sampler_t2/tone_quiet.wav", false, 6); s.loadSamplePath("/tmp/fm1sampler_t2/tone_loud.wav", false, 7); run(2.0);
       float pkq = 0, pkl = 0; auto pq = s.samplePeaksOf(6, 64), pl = s.samplePeaksOf(7, 64); for (float v : pq) pkq = std::max(pkq, v); for (float v : pl) pkl = std::max(pkl, v);
       CHECK(pkq > 0.2f && std::fabs(pkq - pkl) < 0.05f * std::max(pkq, pkl) + 0.02f, "loudness normalisation: quiet (%.3f) and loud (%.3f) tones end up equally loud", pkq, pkl);
+      {   // a sparse drum hit (a sharp decaying burst, then silence) must not stay quiet next to a sustained tone
+        std::vector<float> st; unsigned rs = 1; for (int i = 0; i < 2 * sr; i++) { rs = rs * 1664525u + 1013904223u; const float nz = ((rs >> 8) & 0xffff) / 32768.f - 1.f; const float v = 0.9f * nz * std::exp(-i / (0.04f * sr)); st.push_back(v); st.push_back(v); }
+        writeWav16("/tmp/fm1sampler_t2/drum_hit.wav", st, sr); s.loadSamplePath("/tmp/fm1sampler_t2/drum_hit.wav", false, 4); run(1.5);
+        auto pd = s.samplePeaksOf(4, 64); float pkd = 0; for (float v : pd) pkd = std::max(pkd, v);
+        CHECK(pkd > 0.7f && pkd <= 1.0f, "drum hit: peaks high but limited (%.3f)", pkd); }
       const float m = s.detectRoot(6); CHECK(std::fabs(m - 57.f) < 0.15f, "auto-tune: a 220 Hz tone is detected as A3 = note 57 (%.3f)", m);
       s.loadSamplePath("/tmp/fm1sampler_t2/tone_flat.wav", false, 5); run(1.0);
       const float mf = s.detectRoot(5); CHECK(std::fabs(mf - 57.3f) < 0.15f, "...and a tone 30 cents sharp as 57.3 (%.3f)", mf);

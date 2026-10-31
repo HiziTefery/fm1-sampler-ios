@@ -13,7 +13,7 @@ bool Sampler::load(const std::string& path) {
     if (!readWav(path, buf->d, buf->sr)) return false;
     buf->frames = (int)(buf->d.size() / 2);
     if (buf->frames < 64) return false;
-    // loudness normalisation: the RMS of the part that sounds (20 ms blocks within 30 dB of the loudest one) goes to a common level, the peak never passes 0.95
+    // loudness normalisation: the RMS of the part that sounds (20 ms blocks within 30 dB of the loudest one) goes to a common level
     float pk = 0.f; for (float v : buf->d) pk = std::max(pk, std::fabs(v));
     if (pk > 1e-4f) {
         const int blk = std::max(64, buf->sr / 50); const int nb = std::max(1, buf->frames / blk);
@@ -21,8 +21,14 @@ bool Sampler::load(const std::string& path) {
         for (int b = 0; b < nb; b++) { double s = 0; for (int i = b * blk; i < (b + 1) * blk && i < buf->frames; i++) s += (double)buf->d[2 * (size_t)i] * buf->d[2 * (size_t)i] + (double)buf->d[2 * (size_t)i + 1] * buf->d[2 * (size_t)i + 1]; e[(size_t)b] = s / (2.0 * blk); emax = std::max(emax, e[(size_t)b]); }
         double sum = 0; int cnt = 0; for (double v : e) if (v > emax * 1e-3) { sum += v; cnt++; }
         const float rms = cnt ? (float)std::sqrt(sum / cnt) : pk;
-        const float g = std::min(0.95f / pk, 0.25f / std::max(rms, 1e-4f));
-        for (float& v : buf->d) v *= g;
+        // sparse, peaky material (drums) would stay quiet if only the peak were normalised: it gets the same RMS as sustained sounds, up to +10 dB of peak,
+        // and a soft limiter (smooth knee at 0.6, ceiling 0.98) keeps what rises above that
+        const float g = std::min(std::min(3.0f / pk, 0.25f / std::max(rms, 1e-4f)), 16.f);
+        for (float& v : buf->d) {
+            float x = v * g; const float ax = std::fabs(x);
+            if (ax > 0.6f) x = (x < 0 ? -1.f : 1.f) * (0.6f + 0.38f * std::tanh((ax - 0.6f) / 0.38f));
+            v = x;
+        }
     }
     peaks_.assign(512, 0.f);
     for (int b = 0; b < 512; b++) {
