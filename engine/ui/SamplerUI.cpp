@@ -153,13 +153,29 @@ void SamplerUI::pageView(Rect r) {
     };
     std::string head;
     switch (pg) {
-    case P::P_FX: {   // a hit, the echoes of the delay (time = spacing, feedback = decay) and the dense tail of the reverb (size = length, D/W = height)
+    case P::P_FX: {   // reverb = a room, a wire cube: its size is the size, the dim rays from the source to the walls are the wet part; delay = an echo: a circle and its repeats, spacing = time, shrinking = feedback
         head = "REVERB + DELAY";
-        const float x0 = w.x + 10, len = (0.2f + 0.8f * kn[0].norm) * (w.w - 30), amp = 0.15f + 0.75f * kn[1].norm;
-        unsigned s = 7;
-        for (float x = x0 + 8; x < x0 + 8 + len; x += 4) { s = s * 1103515245u + 12345u; const float rnd = 0.55f + 0.45f * ((s >> 16 & 255) / 255.f); vbar(x, base, base - amp * H * std::exp(-3.2f * (x - x0) / len) * rnd, kLine, 2.2f); }
-        const float sp = 30 + kn[2].norm * 140; float a = 0.95f;
-        for (int k = 0; k < 14; k++, a *= (0.08f + 0.9f * kn[3].norm)) { const float x = x0 + k * sp; if (x > w.x + w.w - 6 || a * H < 3) break; vbar(x, base, base - a * H, kPaper, 4); }
+        const float ccy = w.y + (w.h - 14) / 2;
+        const float s = 24 + kn[0].norm * 32, d = s * 0.38f, ccx = w.x + 100;
+        const float fx = ccx - (s + d) / 2, fy = ccy - (s + d) / 2 + d;   // front square, top left
+        const float v[8][2] = {{fx, fy}, {fx + s, fy}, {fx + s, fy + s}, {fx, fy + s}, {fx + d, fy - d}, {fx + s + d, fy - d}, {fx + s + d, fy + s - d}, {fx + d, fy + s - d}};
+        const float sx = fx + (s + d) / 2, sy = fy + (s - d) / 2;   // the source in the middle of the room
+        const int rays = (int)std::lround(kn[1].norm * 8);
+        for (int i = 0; i < rays; i++) line(sx, sy, v[i][0], v[i][1], kDim, 1.5f);
+        auto edge = [&](int a, int b, uint32_t c) { line(v[a][0], v[a][1], v[b][0], v[b][1], c, 2.7f); circle(v[a][0], v[a][1], 1.35f, c); circle(v[b][0], v[b][1], 1.35f, c); };
+        edge(7, 4, kDim); edge(7, 6, kDim); edge(3, 7, kDim);   // hidden edges
+        edge(0, 1, kPaper); edge(1, 2, kPaper); edge(2, 3, kPaper); edge(3, 0, kPaper);
+        edge(4, 5, kPaper); edge(5, 6, kPaper); edge(0, 4, kPaper); edge(1, 5, kPaper); edge(2, 6, kPaper);
+        circle(sx, sy, 4, kPaper);
+        const float fb = 0.45f + 0.47f * kn[3].norm, sp = 24 + kn[2].norm * 30, ex = w.x + 245;
+        float rr = 13; float x = ex;
+        for (int k = 0; k < 9 && rr >= 2.5f && x < w.x + w.w - 6; k++, x += sp, rr *= fb) {
+            const uint32_t c = k == 0 ? kPaper : k == 1 ? kPaper : kDim;
+            circle(x, ccy, rr, c);
+            if (k > 0 && rr > 5) circle(x, ccy, rr - 2.7f, kBg);
+        }
+        text(ccx, w.y + w.h - 4, 9, kDim, "REVERB", 1, true);
+        text(ex + 60, w.y + w.h - 4, 9, kDim, "DELAY", 1, true);
         break; }
     case P::P_ENV: {   // the ADSR curve
         head = "ENVELOPE";
