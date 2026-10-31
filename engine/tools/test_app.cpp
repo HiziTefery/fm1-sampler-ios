@@ -173,6 +173,17 @@ int main() {
         auto eq = findSlices(std::vector<float>((size_t)N * 2, 0.1f), N, 44100, 16);
         CHECK(eq.size() == 16, "no hits: %zu equal slices", eq.size());
     }
+    {   // sidechain: track 2 ducked by track 1, send effects return something
+        app.loopClear(); run(0.3);
+        for (int tr : {0, 1}) { app.selectTrack(tr); app.setAlgo(2); }
+        auto level = [&]() { app.selectTrack(1); app.playNote(60, true); run(0.5); app.selectTrack(0); app.playNote(60, true); run(0.9); float pk = 0; for (int i = 0; i < 20; i++) { run(0.03); pk = std::max(pk, app.status().track_peak[1]); } app.playNote(60, false); app.selectTrack(1); app.playNote(60, false); run(0.8); return pk; };
+        app.selectTrack(1); { auto k = app.knobs(SamplerApp::P_MIX); k[1].set(0.f); } const float open = level();
+        { auto k = app.knobs(SamplerApp::P_MIX); k[1].set(1.f / 8.f); k = app.knobs(SamplerApp::P_MIX); k[2].set(0.1f); k = app.knobs(SamplerApp::P_MIX); k[3].set(1.f); } run(0.2);
+        const float ducked = level();
+        CHECK(open > 0.01f && ducked < open * 0.6f, "sidechain: track 2 ducked by track 1 (%.3f -> %.3f)", open, ducked);
+        { auto k = app.knobs(SamplerApp::P_MIX); k[1].set(0.f); }
+        app.selectTrack(1); app.setAlgo(0); app.selectTrack(0); app.setAlgo(0);
+    }
     printf("%s (%d failures)\n", fails ? "FAILED" : "ALL OK", fails);
     return fails ? 1 : 0;
 }

@@ -43,7 +43,7 @@ public:
     // the parameters of the modes that replace speed / pitch on the sample page
     void setSliceThreshold(float thr01) { sliceThr_ = thr01; reslice(); }   // KIT: how sharp a rise must be to start a slice (0 many slices .. 1 few)
     void setKitPitch(float semis) { kitSemis_ = semis; }                    // KIT: every slice is transposed by this
-    void setGrain(int count, float lenSec) { grainN_ = std::min(12, std::max(1, count)); grainLen_ = std::min(0.4f, std::max(0.01f, lenSec)); }   // GRAIN: grains sounding together, their length
+    void setGrain(int count, float scatter) { grainN_ = std::min(12, std::max(1, count)); grainScatter_ = std::min(1.f, std::max(0.f, scatter)); }   // GRAIN: grains sounding together, how far around the cursor they start
     void setPaul(float stretch, float width) { paulStretch_ = std::min(100.f, std::max(1.5f, stretch)); paulWidth_ = std::min(2.f, std::max(0.f, width)); }   // PAUL: slow-down factor, stereo width (1 = as is)
     std::vector<float> sliceFractions() const;   // KIT: where the slices start (0..1 of the sample) and, last, where the last one ends
     void noteOn(int note, int vel);
@@ -72,6 +72,6 @@ private:
     float procA_ = 0, procB_ = 1, rangeA_ = 0, rangeB_ = 1, bend_ = 0, atk_ = 0.01f, dec_ = 0.3f, sus_ = 0.8f, rel_ = 0.3f, root_ = 60.f;
     int mode_ = MELODIC; std::vector<int> slices_; std::string label_; std::vector<float> peaks_;
     Voice voices_[kVoices]; std::vector<std::unique_ptr<PaulStream>> paul_; bool paulBusy_[kVoices] = {};
-    std::vector<Onset> onsets_; float sliceThr_ = 0.22f, kitSemis_ = 0.f, grainLen_ = 0.12f, paulStretch_ = 8.f, paulWidth_ = 1.f; int grainN_ = 7; double sliceEnd_ = 0;
+    std::vector<Onset> onsets_; float sliceThr_ = 0.22f, kitSemis_ = 0.f, grainLen_ = 0.12f, grainScatter_ = 1.f, paulStretch_ = 8.f, paulWidth_ = 1.f; int grainN_ = 7; double sliceEnd_ = 0;
     uint32_t bornCounter_ = 0, rng_ = 7;
 };

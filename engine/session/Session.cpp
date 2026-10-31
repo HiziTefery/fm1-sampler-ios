@@ -35,10 +35,12 @@ struct Session::Impl {
         Session::Lfo lfo; float lfoPhase = 0, lfoSH = 0, lfoVal = 0;
         TapeInsert tape;
         float vol = 0.8f, pan = 0.f, send[2] = {0.f, 0.f};
+        // sidechain compressor: this track is ducked by the level of track scSrc (-1 off); scEnv is this track's own level, read by the others
+        int scSrc = -1; float scThrDb = -20.f, scRatio = 1.f, scEnv = 0.f, scGain = 1.f;
         std::vector<Note> pending;   // notes of this block (without the arpeggiator)
         // offline stretch / pitch
         float speed = 1.f, semis = 0.f, rangeA = 0.f, rangeB = 1.f; uint32_t gen = 0;
-        float sliceThr = 0.22f, kitSemis = 0.f, grainLen = 0.12f, paulStretch = 8.f, paulWidth = 1.f; int grainN = 7; std::vector<float> slices;   // mode parameters; slices for the UI (under infoMtx)
+        float sliceThr = 0.22f, kitSemis = 0.f, grainScatter = 1.f, paulStretch = 8.f, paulWidth = 1.f; int grainN = 7; std::vector<float> slices;   // mode parameters; slices for the UI (under infoMtx)
         // the audio loop of this track
         std::vector<float> clip;     // interleaved stereo, loopSamples frames
         bool clipHas = false, clipRec = false;
@@ -183,7 +185,7 @@ struct Session::Impl {
     // audio thread: hand the mode parameters of a track to its sampler and publish the slices for the UI
     void applyModeParams(Track& t) {
         if (!t.sampler) return;
-        t.sampler->setSliceThreshold(t.sliceThr); t.sampler->setKitPitch(t.kitSemis); t.sampler->setGrain(t.grainN, t.grainLen); t.sampler->setPaul(t.paulStretch, t.paulWidth);
+        t.sampler->setSliceThreshold(t.sliceThr); t.sampler->setKitPitch(t.kitSemis); t.sampler->setGrain(t.grainN, t.grainScatter); t.sampler->setPaul(t.paulStretch, t.paulWidth);
         auto f = t.sampler->sliceFractions();
         std::lock_guard<std::mutex> l(t.infoMtx); t.slices = std::move(f);
     }
@@ -324,7 +326,7 @@ struct Session::Impl {
         std::vector<Arp::Ev> evs;
         for (int ti = 0; ti < kTracks; ti++) {
             Track& t = *tracks[(size_t)ti];
-            if (!t.sampler && !t.clipHas && !t.clipRec && t.pending.empty()) { t.peak.store(t.peak.load() * 0.9f); a_voiceN[ti].store(0); continue; }
+            if (!t.sampler && !t.clipHas && !t.clipRec && t.pending.empty()) { t.peak.store(t.peak.load() * 0.9f); t.scEnv *= 0.8f; t.scGain = 1.f; a_voiceN[ti].store(0); continue; }
             std::fill(bus.begin(), bus.begin() + n * 2, 0.f);
             // LFO: one value per block (about 170 Hz)
             float lfoGain = 1.f, lfoPan = 0.f, bend = 0.f; bool filterOn = false;
@@ -405,12 +407,24 @@ struct Session::Impl {
                 }
             }
             t.tape.process(bus.data(), n);
+            {   // this track's level for the others (peak with a ~120 ms release) ...
+                float bp = 0.f; for (int i = 0; i < n * 2; i++) bp = std::max(bp, std::fabs(bus[(size_t)i]));
+                t.scEnv = std::max(bp, t.scEnv * std::exp(-(float)n / (0.12f * sr)));
+            }
+            // ... and the gain the sidechain asks for: over the threshold the level is pulled down by (over)(1 - 1/ratio) dB; fast attack, slow release
+            float scTarget = 1.f;
+            if (t.scSrc >= 0 && t.scSrc != ti && t.scRatio > 1.01f) {
+                const float lvDb = 20.f * std::log10(std::max(1e-5f, tracks[(size_t)t.scSrc]->scEnv)), over = lvDb - t.scThrDb;
+                if (over > 0.f) scTarget = std::pow(10.f, -over * (1.f - 1.f / t.scRatio) / 20.f);
+            }
+            const float scFrom = t.scGain; t.scGain += (scTarget - t.scGain) * (scTarget < t.scGain ? 0.7f : 0.08f);
             const float g = t.vol * lfoGain;
             const float ang = (clampf(t.pan + lfoPan, -1.f, 1.f) * 0.5f + 0.5f) * 1.5707963f;
             const float gl = g * std::cos(ang) * 1.4142f, gr = g * std::sin(ang) * 1.4142f;
             float pk = 0.f;
             for (int i = 0; i < n; i++) {
-                const float l = bus[2 * i] * gl, r = bus[2 * i + 1] * gr;
+                const float sc = scFrom + (t.scGain - scFrom) * (float)(i + 1) / n;
+                const float l = bus[2 * i] * gl * sc, r = bus[2 * i + 1] * gr * sc;
                 out[2 * i] += l; out[2 * i + 1] += r;
                 for (int sd = 0; sd < 2; sd++) if (t.send[sd] > 0.f) { sendBus[sd][2 * i] += l * t.send[sd]; sendBus[sd][2 * i + 1] += r * t.send[sd]; }
                 pk = std::max(pk, std::max(std::fabs(l), std::fabs(r)));
@@ -504,7 +518,7 @@ void Session::setSampleRange(int t, float a, float b) {
 }
 void Session::setSliceThreshold(int t, float v) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.sliceThr = clampf(v, 0.f, 1.f); d->applyModeParams(tr); }); }
 void Session::setKitPitch(int t, float s) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.kitSemis = s; d->applyModeParams(tr); }); }
-void Session::setGrain(int t, int n, float len) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.grainN = n; tr.grainLen = len; d->applyModeParams(tr); }); }
+void Session::setGrain(int t, int n, float sc) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.grainN = n; tr.grainScatter = sc; d->applyModeParams(tr); }); }
 void Session::setPaul(int t, float st, float w) { if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.paulStretch = st; tr.paulWidth = w; d->applyModeParams(tr); }); }
 std::vector<float> Session::sliceFractions(int t) const {
     if (t < 0 || t >= kTracks) return {};
@@ -532,6 +546,9 @@ void Session::setTape(int t, float sat, float tone, float wobble, float hiss, fl
 // ---- mixer ----
 void Session::setVolume(int t, float v) { if (t >= 0 && t < kTracks) d->post([=] { d->tracks[(size_t)t]->vol = clampf(v, 0.f, 1.5f); }); }
 void Session::setPan(int t, float p) { if (t >= 0 && t < kTracks) d->post([=] { d->tracks[(size_t)t]->pan = clampf(p, -1.f, 1.f); }); }
+void Session::setSidechain(int t, int src, float thresholdDb, float ratio) {
+    if (t >= 0 && t < kTracks) d->post([=] { auto& tr = *d->tracks[(size_t)t]; tr.scSrc = (src >= 0 && src < kTracks) ? src : -1; tr.scThrDb = clampf(thresholdDb, -60.f, 0.f); tr.scRatio = clampf(ratio, 1.f, 40.f); if (tr.scSrc < 0) tr.scGain = 1.f; });
+}
 void Session::setSend(int t, int w, float l) { if (t >= 0 && t < kTracks && (w == 0 || w == 1)) d->post([=] { d->tracks[(size_t)t]->send[w] = clampf(l, 0.f, 1.f); }); }
 void Session::setMasterVolume(float v) { d->post([=] { d->masterVol = clampf(v, 0.f, 1.5f); }); }
 void Session::setReverb(float size) { d->post([=] { d->reverb.setSize(size); }); }

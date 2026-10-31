@@ -156,18 +156,18 @@ void SamplerUI::pageView(Rect r) {
     case P::P_FX: {   // reverb = a room, a wire cube: its size is the size, the dim rays from the source to the walls are the wet part; delay = an echo: a circle and its repeats, spacing = time, shrinking = feedback
         head = "REVERB + DELAY";
         const float ccy = w.y + (w.h - 14) / 2;
-        const float s = 24 + kn[0].norm * 32, d = s * 0.38f, ccx = w.x + 100;
+        const float s = 24 + kn[1].norm * 32, d = s * 0.38f, ccx = w.x + 100;   // kn: reverb send, reverb size, delay send, delay time
         const float fx = ccx - (s + d) / 2, fy = ccy - (s + d) / 2 + d;   // front square, top left
         const float v[8][2] = {{fx, fy}, {fx + s, fy}, {fx + s, fy + s}, {fx, fy + s}, {fx + d, fy - d}, {fx + s + d, fy - d}, {fx + s + d, fy + s - d}, {fx + d, fy + s - d}};
         const float sx = fx + (s + d) / 2, sy = fy + (s - d) / 2;   // the source in the middle of the room
-        const int rays = (int)std::lround(kn[1].norm * 8);
+        const int rays = (int)std::lround(kn[0].norm * 8);
         for (int i = 0; i < rays; i++) line(sx, sy, v[i][0], v[i][1], kDim, 1.5f);
         auto edge = [&](int a, int b, uint32_t c) { line(v[a][0], v[a][1], v[b][0], v[b][1], c, 2.7f); circle(v[a][0], v[a][1], 1.35f, c); circle(v[b][0], v[b][1], 1.35f, c); };
         edge(7, 4, kDim); edge(7, 6, kDim); edge(3, 7, kDim);   // hidden edges
         edge(0, 1, kPaper); edge(1, 2, kPaper); edge(2, 3, kPaper); edge(3, 0, kPaper);
         edge(4, 5, kPaper); edge(5, 6, kPaper); edge(0, 4, kPaper); edge(1, 5, kPaper); edge(2, 6, kPaper);
         circle(sx, sy, 4, kPaper);
-        const float fb = 0.45f + 0.47f * kn[3].norm, sp = 24 + kn[2].norm * 30, ex = w.x + 245;
+        const float fb = 0.4f + 0.5f * kn[2].norm, sp = 24 + kn[3].norm * 30, ex = w.x + 245;
         float rr = 13; float x = ex;
         for (int k = 0; k < 9 && rr >= 2.5f && x < w.x + w.w - 6; k++, x += sp, rr *= fb) {
             const uint32_t c = k == 0 ? kPaper : k == 1 ? kPaper : kDim;
@@ -235,7 +235,7 @@ void SamplerUI::pageView(Rect r) {
         poly(pts, kPaper, 2.7f);
         break; }
     case P::P_MIX: {   // eight faders, one per track: the cap is the volume, the orange bar next to it the live level, the selected track is orange
-        head = "TRACK LEVELS";
+        head = "LEVELS + SIDECHAIN";
         const float cw = w.w / 8;
         for (int i = 0; i < 8; i++) {
             const float x = w.x + (i + 0.5f) * cw, top = w.y + 6, bot = w.y + w.h - 16, v = app_.state(i).vol, y = bot - v * (bot - top), sel = i == t;
@@ -243,6 +243,7 @@ void SamplerUI::pageView(Rect r) {
             vbar(x + 11, bot, bot - std::min(1.f, st_.track_peak[i] * 1.5f) * (bot - top), kOrange, 3);
             rrect({x - 9, y - 2.5f, 18, 5}, 0, sel ? kOrange : kPaper);
             text(x, w.y + w.h - 5, 9, sel ? kOrange : kDim, std::to_string(i + 1), 1, true);
+            if (app_.state(i).scSrc > 0 && app_.state(i).scSrc - 1 != i) text(x, w.y + 2, 9, kDim, "<" + std::to_string(app_.state(i).scSrc), 1, true);   // ducked by this track
         }
         break; }
     case P::P_KEY: {   // two octaves of semitones: the scale in ink, the root in orange, the rest dim

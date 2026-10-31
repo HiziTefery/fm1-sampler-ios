@@ -39,8 +39,9 @@ int degreeNote(int d, int scale, int root) { const int n = kScaleN[scale], o = d
 float speedOf(float n) { return 0.25f * std::pow(16.f, n); }          // 0.25..4
 float micThrOf(float v) { return 0.005f * std::pow(100.f, v); }       // -46..-6 dBFS
 int grainCount(float n) { return 1 + (int)std::lround(n * 11); }               // 1..12 grains at once
-float grainSec(float n) { return 0.02f * std::pow(15.f, n); }                     // 20 ms .. 300 ms
 float paulFactor(float n) { return 2.f * std::pow(32.f, n); }                     // slow-down 2x .. 64x
+float scThrDb(float n) { return -40.f * (1.f - n); }                              // 0 .. -40 dB
+float scRatioOf(float n) { return 1.f + 19.f * n * n; }                          // 1:1 .. 20:1
 float loopSpeedOf(float n) { return 0.25f * std::pow(8.f, n); }       // 0.25..2
 float lfoHz(float n) { return 0.1f * std::pow(200.f, n); }            // 0.1..20
 }  // namespace
@@ -139,7 +140,7 @@ void SamplerApp::applyHome(int t, bool commit) {
     s_.setSampleRange(t, x.start, x.end);
     const float semis = std::round((x.pitch - 0.5f) * 48.f);
     if (x.algo == 3) { s_.setStretch(t, 1.f, 0.f, commit); s_.setSliceThreshold(t, x.kitThr); s_.setKitPitch(t, semis); }   // KIT: threshold instead of speed, the pitch moves every slice
-    else if (x.algo == 4) { s_.setStretch(t, 1.f, 0.f, commit); s_.setGrain(t, grainCount(x.grains), grainSec(x.grainLen)); }
+    else if (x.algo == 4) { s_.setStretch(t, 1.f, 0.f, commit); s_.setGrain(t, grainCount(x.grains), x.scatter); }
     else if (x.algo == 5) { s_.setStretch(t, 1.f, 0.f, commit); s_.setPaul(t, paulFactor(x.paulStretch), x.paulWidth * 2.f); }
     else s_.setStretch(t, speedOf(x.speed), semis, commit);
 }
@@ -155,10 +156,11 @@ void SamplerApp::applySeq(int) {   // loop speed and tape colour are global: eve
 void SamplerApp::applyMix(int t) {
     const TrackState& x = ts_[t];
     s_.setVolume(t, x.vol * 1.2f); s_.setPan(t, x.pan * 2.f - 1.f); s_.setSend(t, 0, x.sendR); s_.setSend(t, 1, x.sendD);
+    s_.setSidechain(t, x.scSrc - 1, scThrDb(x.scThr), scRatioOf(x.scRatio));
 }
 void SamplerApp::applyFx() {
     s_.setReverb(reverbSize_);
-    s_.setRetLevel(0, reverbDw_);
+    s_.setRetLevel(0, 0.8f); s_.setRetLevel(1, 0.7f);   // global send effects: how much of a track goes in is set per track (the sends)
     s_.setDelay(0.05f + delayTime_ * 1.45f, delayFb_ * 0.95f);
 }
 void SamplerApp::queueCommit(int t) { commitAt_ = nowMs_ + 350; commitTrack_ = t; }   // the offline stretch / pitch runs once the knob rests
@@ -209,9 +211,9 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
         if (x.algo == 3) {   // KIT: the threshold the sample is cut at, the pitch of every slice
             k[2] = cont("THRESHOLD", &x.kitThr, [](float v) { return pct(v); }, [=] { applyHome(t); }, 0.01f);
             k[3] = cont("PITCH", &x.pitch, [](float v) { return fmt("%+.0f ST", std::round((v - 0.5f) * 48.f)); }, [=] { applyHome(t); }, 1.f / 48.f);
-        } else if (x.algo == 4) {   // GRAIN: how many grains sound together and how long each one is
+        } else if (x.algo == 4) {   // GRAIN: how many grains sound together and how far around the cursor they scatter
             k[2] = cont("GRAINS", &x.grains, [](float v) { return std::to_string(grainCount(v)); }, [=] { applyHome(t); }, 1.f / 11.f);
-            k[3] = cont("GRAIN SIZE", &x.grainLen, [](float v) { return fmt("%.0fMS", grainSec(v) * 1000.0); }, [=] { applyHome(t); }, 0.02f);
+            k[3] = cont("SCATTER", &x.scatter, [](float v) { return pct(v); }, [=] { applyHome(t); }, 0.02f);
         } else if (x.algo == 5) {   // PAULSTRETCH: how much slower, how wide
             k[2] = cont("STRETCH", &x.paulStretch, [](float v) { return fmt("%.0fX", paulFactor(v)); }, [=] { applyHome(t); }, 0.02f);
             k[3] = cont("WIDTH", &x.paulWidth, [](float v) { return pct(v * 2.f); }, [=] { applyHome(t); }, 0.02f);
@@ -220,11 +222,11 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
             k[3] = cont("PITCH", &x.pitch, [](float v) { return fmt("%+.0f ST", std::round((v - 0.5f) * 48.f)); }, [=] { applyHome(t); }, 1.f / 48.f, true);
         }
         break;
-    case P_FX:
-        k[0] = cont("REVERB SIZE", &reverbSize_, [](float v) { return pct(v); }, [=] { applyFx(); });
-        k[1] = cont("REVERB D/W", &reverbDw_, [](float v) { return pct(v); }, [=] { applyFx(); });
-        k[2] = cont("DELAY TIME", &delayTime_, [](float v) { return fmt("%.2fS", 0.05 + v * 1.45); }, [=] { applyFx(); });
-        k[3] = cont("DELAY FEEDBACK", &delayFb_, [](float v) { return pct(v); }, [=] { applyFx(); });
+    case P_FX:   // two global send effects; the sends are per track (the selected one), size and time are global
+        k[0] = cont("REVERB SEND", &x.sendR, [](float v) { return pct(v); }, [=] { applyMix(t); });
+        k[1] = cont("REVERB SIZE", &reverbSize_, [](float v) { return pct(v); }, [=] { applyFx(); });
+        k[2] = cont("DELAY SEND", &x.sendD, [](float v) { return pct(v); }, [=] { applyMix(t); });
+        k[3] = cont("DELAY TIME", &delayTime_, [](float v) { return fmt("%.2fS", 0.05 + v * 1.45); }, [=] { applyFx(); });
         break;
     case P_ENV:
         k[0] = cont("ATTACK", &x.a, [=](float v) { return sec(3 * v * v); }, [=] { applyEnv(t); });
@@ -252,12 +254,14 @@ SamplerApp::Knobs SamplerApp::knobs(Page p) {
         k[2] = cont("LO-FI", &lofi_, [](float v) { return pct(v); }, [=] { applySeq(t); });
         k[3] = cont("WOBBLE", &wobble_, [](float v) { return pct(v); }, [=] { applySeq(t); });
         break;
-    case P_MIX:
+    case P_MIX: {
         k[0] = cont("VOLUME", &x.vol, [](float v) { return pct(v); }, [=] { applyMix(t); });
-        k[1] = cont("PAN", &x.pan, [](float v) { int p100 = (int)std::lround((v - 0.5f) * 200); return p100 == 0 ? std::string("C") : fmt(p100 < 0 ? "L%.0f" : "R%.0f", std::abs(p100)); }, [=] { applyMix(t); });
-        k[2] = cont("REVERB SEND", &x.sendR, [](float v) { return pct(v); }, [=] { applyMix(t); });
-        k[3] = cont("DELAY SEND", &x.sendD, [](float v) { return pct(v); }, [=] { applyMix(t); });
+        std::vector<std::string> src = {"OFF"}; for (int i = 1; i <= kTracks; i++) src.push_back("TRACK " + std::to_string(i));
+        k[1] = choice("SC SOURCE", &x.scSrc, src, [=] { applyMix(t); });
+        k[2] = cont("SC THRESHOLD", &x.scThr, [](float v) { return fmt("%.0f DB", scThrDb(v)); }, [=] { applyMix(t); });
+        k[3] = cont("SC RATIO", &x.scRatio, [](float v) { return fmt("%.1f:1", scRatioOf(v)); }, [=] { applyMix(t); });
         break;
+    }
     case P_KEY: {
         auto mk = [this](const char* name, std::vector<std::string> opts, int cur, std::function<void(int)> setter) {
             Knob b; b.name = name; b.valid = true; b.isChoice = true;

@@ -133,13 +133,18 @@ void Sampler::renderVoice(Voice& v, float* out, int n) {
             v.pos = ps.sourcePos();
         } else if (mode_ == GRAIN) {
             v.spawn -= 1.0;
+            v.pos += (v.we - v.ws) / (4.0 * sr_); if (v.pos >= v.we) v.pos = v.ws;
             if (v.spawn <= 0.0) {
                 for (auto& g : v.grain) if (!g.on) {
                     g.on = true; g.age = 0; g.len = (int)(sr_ * grainLen_ * (0.5f + rnd()));
                     const float k = rnd(); const double mult = k < 0.15 ? 0.5 : k < 0.3 ? 2.0 : 1.0;
                     g.inc = rate * mult * (1.0 + (rnd() - 0.5) * 0.004) * (rnd() < 0.2f ? -1.0 : 1.0);
-                    const double span = std::max(1.0, v.we - v.ws - g.len * std::fabs(g.inc));
-                    g.pos = g.inc > 0 ? v.ws + rnd() * span : v.we - rnd() * span;
+                    // the cursor sweeps the window in about four seconds; scatter is how far around it a grain may start (1 = anywhere in the window)
+                    const double win = std::max(1.0, v.we - v.ws), room = std::max(1.0, win - g.len * std::fabs(g.inc));
+                    double p = v.pos + (rnd() - 0.5) * grainScatter_ * win;
+                    p = std::min(v.we - g.len * std::fabs(g.inc) - 1, std::max(v.ws, p));
+                    g.pos = g.inc > 0 ? p : std::min(v.we - 1, p + g.len * std::fabs(g.inc));
+                    (void)room;
                     break;
                 }
                 v.spawn = sr_ * (double)grainLen_ / grainN_ * (0.6 + 0.8 * rnd());

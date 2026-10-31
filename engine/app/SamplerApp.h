@@ -88,10 +88,11 @@ public:
         float a = 0.1f, d = 0.35f, s = 0.8f, r = 0.63246f;   // release 5 r^2 = 2.0 s
         float lfoRate = 0.3f, lfoDepth = 0.f; int lfoTarget = 0, lfoShape = 0;
         float start = 0.f, end = 1.f, speed = 0.5f, pitch = 0.5f;
-        float kitThr = 0.22f, grains = 0.55f, grainLen = 0.66f, paulStretch = 0.4f, paulWidth = 0.5f;   // K3 / K4 of the sample page in KIT / GRAIN / PAUL mode
+        float kitThr = 0.22f, grains = 0.55f, scatter = 1.f, paulStretch = 0.4f, paulWidth = 0.5f;   // K3 / K4 of the sample page in KIT / GRAIN / PAUL mode
         int arpRate = 0, arpPatt = 0, arpOct = 0; float arpLen = 0.7f;
         
-        float vol = 0.8f, pan = 0.5f, sendR = 0.5f, sendD = 0.2f;
+        float vol = 0.8f, pan = 0.5f, sendR = 0.3f, sendD = 0.2f;
+        int scSrc = 0; float scThr = 0.5f, scRatio = 0.4f;   // sidechain: source (0 off, 1..8 = track), threshold and ratio knobs
         int entry = -1;
         float root = 60.f; bool tuned = false;   // auto-tune: the detected pitch of the sample
     };
