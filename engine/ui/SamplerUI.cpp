@@ -218,7 +218,7 @@ void SamplerUI::knob(float cx, float cy, SamplerApp::Page page, int idx, bool) {
         [this, page, idx](float, float y) { app_.knobs(page)[(size_t)idx].set(clamp01(dragV_ + (dragY_ - y) / 110.f)); });
 }
 
-// The tape loop: one closed ribbon over two wheels and a roller; it runs once round per loop. Without a loop it stands still.
+// The tape loop: one closed ribbon over two wheels; it runs once round per loop. Without a loop it stands still.
 void SamplerUI::cassette(Rect wd) {
     const int t = app_.track();
     const bool hasLoop = app_.loopExists() && st_.loopSamples > 0;
@@ -229,15 +229,14 @@ void SamplerUI::cassette(Rect wd) {
     // Between two posts it is a common tangent, round a post an arc: the path is built from those.
     struct Post { float x, y, r; int s; };   // s = -1: the post is inside the ribbon (it wraps round it), +1: outside
     const float W0 = wd.w, H0 = wd.h;
-    const Post posts[3] = {
-        {wd.x + 0.22f * W0, wd.y + 0.52f * H0, 0.31f * H0, -1},   // big wheel
-        {wd.x + 0.80f * W0, wd.y + 0.50f * H0, 0.20f * H0, -1},   // small wheel
-        {wd.x + 0.52f * W0, wd.y + 0.23f * H0, 0.10f * H0, -1},   // the roller: inside, under the top run, it pushes the ribbon out
+    const Post posts[2] = {
+        {wd.x + 0.25f * W0, wd.y + 0.42f * H0, 0.31f * H0, -1},   // big wheel
+        {wd.x + 0.73f * W0, wd.y + 0.52f * H0, 0.19f * H0, -1},   // small wheel
     };
     struct Seg { bool arc; float x0, y0, x1, y1, cx, cy, r, a0, da, len; };
     std::vector<Seg> segs;
     {
-        const int N = 3; float phi[N], px[N][2], qx[N][2];   // exit point of post i, entry point of post i
+        const int N = 2; float phi[N], px[N][2], qx[N][2];   // exit point of post i, entry point of post i
         for (int i = 0; i < N; i++) {
             const Post &a = posts[i], &b = posts[(i + 1) % N];
             const float dx = b.x - a.x, dy = b.y - a.y, D = std::sqrt(dx * dx + dy * dy), k = b.s * b.r - a.s * a.r;
@@ -276,9 +275,8 @@ void SamplerUI::cassette(Rect wd) {
             line(g.cx + g.r * std::cos(u0), g.cy + g.r * std::sin(u0), g.cx + g.r * std::cos(u1), g.cy + g.r * std::sin(u1), tapeCol, 2.7f);
         }
     }
-    const int t0 = std::max(1, (int)std::lround(per / (2 * kPi * posts[0].r))), t1 = std::max(1, (int)std::lround(per / (2 * kPi * posts[1].r))), t2 = std::max(1, (int)std::lround(per / (2 * kPi * posts[2].r)));
+    const int t0 = std::max(1, (int)std::lround(per / (2 * kPi * posts[0].r))), t1 = std::max(1, (int)std::lround(per / (2 * kPi * posts[1].r)));
     reel(posts[0].x, posts[0].y, posts[0].r, -turn * 2 * kPi * t0); reel(posts[1].x, posts[1].y, posts[1].r, -turn * 2 * kPi * t1);
-    (void)t2; circle(posts[2].x, posts[2].y, posts[2].r, tapeCol); circle(posts[2].x, posts[2].y, posts[2].r - 2.7f, kBg);
     float x, y; at(turn * per, x, y); circle(x, y, 6, recNow ? kPaper : kOrange);
 }
 
