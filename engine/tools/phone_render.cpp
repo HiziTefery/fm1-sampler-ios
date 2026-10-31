@@ -46,8 +46,11 @@ int main(int argc, char** argv) {
       for (int i = 0; i < 9; i++) { app.gotoPage(pgs[i]); run(0.1); ui.frame(now); dump(nm[i]); }
       app.playNote(60, false); app.gotoPage(SamplerApp::P_MIX);   // the mixer once more with a sidechain: track 2 ducked by track 1
       app.selectTrack(1); { auto k = app.knobs(SamplerApp::P_MIX); k[1].set(1.f / 8.f); k = app.knobs(SamplerApp::P_MIX); k[2].set(0.45f); k = app.knobs(SamplerApp::P_MIX); k[3].set(0.7f); }
-      app.playNote(60, true); app.selectTrack(0); app.playNote(60, true); run(0.8); app.selectTrack(1); ui.frame(now); dump("pg_mix_sc");
-      app.playNote(60, false); app.selectTrack(0); app.playNote(60, false); app.gotoPage(SamplerApp::P_HOME); run(0.2); }
+      app.playNote(60, true);   // track 2 holds a note, track 1 pulses: the picture scrolls while it is ducked
+      for (int i = 0; i < 160; i++) { app.selectTrack(0); if (i % 40 == 0) app.playNote(60, true); if (i % 40 == 14) app.playNote(60, false); app.selectTrack(1); run(0.033); ui.frame(now); if (i == 20) dump("pg_mix"); }
+      dump("pg_mix_sc");
+      app.selectTrack(0); app.playNote(60, false); app.selectTrack(1); app.playNote(60, false);
+      app.gotoPage(SamplerApp::P_HOME); run(0.2); }
     {   // the modes with their own K3 / K4: KIT on a drum sample (slices marked), GRAIN and PAUL
       const auto& lib = app.library(); int kit = -1; for (size_t i = 0; i < lib.size(); i++) if (lib[i].kit) { kit = (int)i; break; }
       app.selectTrack(3); if (kit >= 0) { app.loadEntry(kit); run(1.5); }

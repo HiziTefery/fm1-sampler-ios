@@ -66,4 +66,6 @@ private:
     Rect sheetList_{0, 0, 0, 0};
     uint32_t clearArmed_ = 0;
     float dragY_ = 0, dragV_ = 0;
+    static constexpr int kHist = 118;   // the mixer picture: the last four seconds of the active channel (its level, the sidechain source, the gain it is pulled down to)
+    float hOwn_[kHist] = {}, hSrc_[kHist] = {}, hGain_[kHist] = {}; int hPos_ = 0, hTrack_ = -1; uint32_t hAt_ = 0;
 };

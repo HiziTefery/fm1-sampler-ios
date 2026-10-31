@@ -234,28 +234,32 @@ void SamplerUI::pageView(Rect r) {
         }
         poly(pts, kPaper, 2.7f);
         break; }
-    case P::P_MIX: {   // only the active channel: its fader with the live level, and the sidechain: the level of the source against the threshold, the gain it is pulled down to
-        head = "TRACK " + std::to_string(t + 1) + "  SIDECHAIN";
-        const float top = w.y + 6, bot = w.y + w.h - 16;
-        const float fx = w.x + 40, y = bot - ts.vol * (bot - top);
-        vbar(fx, top, bot, kLine, 2.7f);
-        vbar(fx + 14, bot, bot - std::min(1.f, st_.track_peak[t] * 1.5f) * (bot - top), kOrange, 4);
-        rrect({fx - 14, y - 2.5f, 28, 5}, 0, kPaper);
-        text(fx, w.y + w.h - 5, 9, kDim, "LEVEL", 1, true);
-        const int src = ts.scSrc - 1;
-        if (src < 0 || src == t) { text(w.x + 250, cy, 11, kDim, "SIDECHAIN OFF", 1, true); break; }
-        const float thrDb = -40.f * (1.f - kn[2].norm), ratio = 1.f + 19.f * kn[3].norm * kn[3].norm;
-        auto yOf = [&](float db) { return bot - std::min(1.f, std::max(0.f, (db + 60.f) / 60.f)) * (bot - top); };   // -60 .. 0 dB over the height
-        const float sx = w.x + 150, gx = w.x + 290, lvDb = 20.f * std::log10(std::max(1e-5f, st_.scLevel[src]));
-        vbar(sx, top, bot, kLine, 2.7f);
-        vbar(sx, bot, yOf(lvDb), kPaper, 8);   // the level of the source
-        rrect({sx - 14, yOf(thrDb) - 1.3f, 28, 2.7f}, 0, kOrange);   // the threshold
-        text(sx, w.y + w.h - 5, 9, kDim, "TRACK " + std::to_string(src + 1), 1, true);
-        text(sx + 22, yOf(thrDb) + 3, 9, kOrange, num("%.0f DB", thrDb) + "  " + num("%.1f:1", ratio), 0, true);
-        const float gr = std::min(1.f, std::max(0.f, 1.f - st_.scGain[t]));   // how far it is pulled down (0 .. 1)
-        vbar(gx, top, bot, kLine, 2.7f);
-        vbar(gx, top, top + gr * (bot - top), kOrange, 8);
-        text(gx, w.y + w.h - 5, 9, kDim, "REDUCTION", 1, true);
+    case P::P_MIX: {   // the last four seconds of the active channel: its level as a mirrored wave (dim = what it would be, ink = what is left after the sidechain),
+                       // the level of the source as an envelope with the threshold line, orange where the source is over the threshold and the track is ducked
+        const int src = ts.scSrc - 1; const bool sc = src >= 0 && src != t;
+        head = "TRACK " + std::to_string(t + 1) + (sc ? "  DUCKED BY " + std::to_string(src + 1) : "  SIDECHAIN OFF");
+        if (hTrack_ != t) { hTrack_ = t; for (int i = 0; i < kHist; i++) hOwn_[i] = hSrc_[i] = 0.f, hGain_[i] = 1.f; hAt_ = now_; }
+        if (now_ - hAt_ > 400) hAt_ = now_ - 33;
+        while (now_ - hAt_ >= 33) { hAt_ += 33; hOwn_[hPos_] = st_.scLevel[t]; hSrc_[hPos_] = sc ? st_.scLevel[src] : 0.f; hGain_[hPos_] = st_.scGain[t]; hPos_ = (hPos_ + 1) % kHist; }
+        const float half = w.h / 2 - 6, pitch = w.w / kHist;
+        auto f = [&](float a) { return std::pow(std::min(1.f, std::max(0.f, a)), 0.5f) * half; };
+        const float thrLin = std::pow(10.f, (-40.f * (1.f - kn[2].norm)) / 20.f);
+        for (int i = 0; i < kHist; i++) {
+            const int k = (hPos_ + i) % kHist; const float x = w.x + i * pitch;
+            const float full = f(hOwn_[k]), left = f(hOwn_[k] * hGain_[k]);
+            if (full > 0.5f) rrect({x, cy - full, pitch * 0.62f, 2 * full}, 0, kLine);
+            if (left > 0.5f) rrect({x, cy - left, pitch * 0.62f, 2 * left}, 0, kPaper);
+        }
+        if (sc) {
+            for (float x = w.x; x < w.x + w.w; x += 10) rrect({x, cy - f(thrLin) - 0.7f, 5, 1.4f}, 0, kOrange);   // the threshold
+            for (int i = 0; i + 1 < kHist; i++) {
+                const int k0 = (hPos_ + i) % kHist, k1 = (hPos_ + i + 1) % kHist;
+                const uint32_t c = hSrc_[k0] > thrLin || hSrc_[k1] > thrLin ? kOrange : kDim;
+                line(w.x + i * pitch, cy - f(hSrc_[k0]), w.x + (i + 1) * pitch, cy - f(hSrc_[k1]), c, 2.2f);
+            }
+            const float gdb = 20.f * std::log10(std::max(0.01f, st_.scGain[t]));
+            if (gdb < -0.5f) text(w.x + w.w - 4, w.y + 6, 11, kOrange, num("%.0f DB", gdb), 2, true);
+        }
         break; }
     case P::P_KEY: {   // two octaves of semitones: the scale in ink, the root in orange, the rest dim
         const auto sc = app_.scale();
