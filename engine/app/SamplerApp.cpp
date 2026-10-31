@@ -43,6 +43,7 @@ float lfoHz(float n) { return 0.1f * std::pow(200.f, n); }            // 0.1..20
 }  // namespace
 
 const char* SamplerApp::pageName(Page p) { return kPage[p]; }
+bool SamplerApp::inScale(int scale, int pc) { return scale < 7 ? scaleIndex(((pc % 12) + 12) % 12, scale) >= 0 : ((pc % 12) + 12) % 12 == 0; }
 const char* SamplerApp::algoName(int i) { return kAlgo[std::min(5, std::max(0, i))]; }
 const char* SamplerApp::scaleName(int i) { return kScaleName[std::min(7, std::max(0, i))]; }
 const char* SamplerApp::noteName(int r) { return kNote[((r % 12) + 12) % 12]; }

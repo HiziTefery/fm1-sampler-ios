@@ -40,6 +40,11 @@ int main(int argc, char** argv) {
     auto tab = [&](int i) { tapAt(rx + (i % 5) * (tw + 4) + tw / 2, 44 + 8 + (i / 5) * 32 + 14); };
     ui.frame(now); dump("deck");
     app.selectTrack(1); run(0.3); ui.frame(now); dump("deck_track2"); app.selectTrack(0);
+    { static const SamplerApp::Page pgs[] = {SamplerApp::P_FX, SamplerApp::P_ENV, SamplerApp::P_LFO, SamplerApp::P_ARP, SamplerApp::P_SEQ, SamplerApp::P_MIX, SamplerApp::P_KEY, SamplerApp::P_SAVE, SamplerApp::P_LEN};
+      static const char* nm[] = {"pg_fx", "pg_env", "pg_lfo", "pg_arp", "pg_seq", "pg_mix", "pg_key", "pg_save", "pg_len"};
+      app.playNote(60, true); run(0.3);
+      for (int i = 0; i < 9; i++) { app.gotoPage(pgs[i]); run(0.1); ui.frame(now); dump(nm[i]); }
+      app.playNote(60, false); app.gotoPage(SamplerApp::P_HOME); run(0.2); }
     ui.openProject(true); ui.frame(now); dump("deck_project"); ui.openProject(false);
     ui.setEditor(true);
     ui.frame(now); dump("sample");

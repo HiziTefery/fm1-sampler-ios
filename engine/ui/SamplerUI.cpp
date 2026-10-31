@@ -136,11 +136,141 @@ void SamplerUI::reel(float cx, float cy, float r, float ang) {
     for (int k = 0; k < 3; k++) { const float a = ang + k * 2 * kPi / 3; line(cx + h * std::cos(a), cy + h * std::sin(a), cx + h * 0.35f * std::cos(a), cy + h * 0.35f * std::sin(a), kPaper, 2.7f); }
 }
 
+// The schematic of the active page, drawn where the sample is: ink lines (2.7), a dim tone for what is secondary, orange for what is live.
+// Everything is computed from the same values as the four knobs, so turning a knob redraws the picture.
+void SamplerUI::pageView(Rect r) {
+    using P = SamplerApp;
+    const int t = app_.track();
+    const P::Page pg = app_.page();
+    const auto ts = app_.state(t);
+    const auto kn = app_.knobs(pg);
+    const Rect w{r.x, r.y + 22, r.w, r.h - 22};
+    const float cy = w.y + w.h / 2, base = w.y + w.h - 4, H = w.h - 10;
+    auto vbar = [&](float x, float y0, float y1, uint32_t c, float wd) { rrect({x - wd / 2, std::min(y0, y1), wd, std::max(1.f, std::fabs(y1 - y0))}, 0, c); };
+    auto poly = [&](const std::vector<std::pair<float, float>>& p, uint32_t c, float wd) {
+        for (size_t i = 0; i + 1 < p.size(); i++) line(p[i].first, p[i].second, p[i + 1].first, p[i + 1].second, c, wd);
+        for (size_t i = 1; i + 1 < p.size(); i++) circle(p[i].first, p[i].second, wd / 2, c);
+    };
+    std::string head;
+    switch (pg) {
+    case P::P_FX: {   // a hit, the echoes of the delay (time = spacing, feedback = decay) and the dense tail of the reverb (size = length, D/W = height)
+        head = "REVERB + DELAY";
+        const float x0 = w.x + 10, len = (0.2f + 0.8f * kn[0].norm) * (w.w - 30), amp = 0.15f + 0.75f * kn[1].norm;
+        unsigned s = 7;
+        for (float x = x0 + 8; x < x0 + 8 + len; x += 4) { s = s * 1103515245u + 12345u; const float rnd = 0.55f + 0.45f * ((s >> 16 & 255) / 255.f); vbar(x, base, base - amp * H * std::exp(-3.2f * (x - x0) / len) * rnd, kLine, 2.2f); }
+        const float sp = 30 + kn[2].norm * 140; float a = 0.95f;
+        for (int k = 0; k < 14; k++, a *= (0.08f + 0.9f * kn[3].norm)) { const float x = x0 + k * sp; if (x > w.x + w.w - 6 || a * H < 3) break; vbar(x, base, base - a * H, kPaper, 4); }
+        break; }
+    case P::P_ENV: {   // the ADSR curve
+        head = "ENVELOPE";
+        const float sa = 0.08f + 0.5f * ts.a, sd = 0.08f + 0.5f * ts.d, ss = 0.3f, sr = 0.08f + 0.5f * ts.r, tot = sa + sd + ss + sr;
+        const int n = (int)(w.w / 4); std::vector<std::pair<float, float>> pts;
+        for (int i = 0; i < n; i++) {
+            const float u = (i + 0.5f) / n * tot; float v;
+            if (u < sa) v = u / sa; else if (u < sa + sd) v = 1.f - (1.f - ts.s) * (u - sa) / sd; else if (u < sa + sd + ss) v = ts.s; else v = ts.s * (1.f - (u - sa - sd - ss) / sr);
+            const float x = w.x + (i + 0.5f) * 4, y = base - v * H;
+            vbar(x, base, y, kLine, 2.4f); pts.push_back({x, y});
+        }
+        poly(pts, kPaper, 2.7f);
+        const float ub[4] = {0, sa, sa + sd, sa + sd + ss}; const char* nm[4] = {"A", "D", "S", "R"};
+        for (int i = 0; i < 4; i++) { const float x = w.x + ub[i] / tot * w.w; if (i) vbar(x, w.y + 12, base, kDim, 1.2f); text(x + 5, w.y + 6, 9, kDim, nm[i], 0, true); }
+        break; }
+    case P::P_LFO: {   // the shape over a few cycles (rate), its height is the depth; the orange bar on the right is the live value
+        head = std::string("LFO > ") + kn[2].value;
+        const float depth = 0.1f + 0.9f * ts.lfoDepth, cyc = 1.5f + 4.5f * ts.lfoRate, amp = (w.h / 2 - 6) * depth;
+        for (float x = w.x; x < w.x + w.w - 14; x += 8) rrect({x, cy - 0.7f, 4, 1.4f}, 0, kDim);
+        const int n = (int)((w.w - 20) / 3); std::vector<std::pair<float, float>> pts;
+        unsigned s = 11; float held = 0; int lastStep = -1;
+        for (int i = 0; i < n; i++) {
+            const float ph = std::fmod(cyc * i / n, 1.f); float v;
+            if (ts.lfoShape == 0) v = std::sin(2 * kPi * ph);
+            else if (ts.lfoShape == 1) v = ph < 0.5f ? 4 * ph - 1 : 3 - 4 * ph;
+            else if (ts.lfoShape == 2) v = ph < 0.5f ? 1.f : -1.f;
+            else { const int st = (int)(cyc * i / n * 4); if (st != lastStep) { lastStep = st; s = s * 1103515245u + 12345u; held = ((s >> 16 & 255) / 127.5f) - 1.f; } v = held; }
+            pts.push_back({w.x + 2 + i * 3.f, cy - v * amp});
+        }
+        poly(pts, kPaper, 2.7f);
+        const float lv = st_.lfoValue[t] * amp;
+        vbar(w.x + w.w - 5, cy, cy - lv, kOrange, 4);
+        break; }
+    case P::P_ARP: {   // the notes the arpeggiator plays: order from the pattern, count from the octaves, width from the length; dim while it is off
+        head = std::string("ARP ") + kn[1].value;
+        const int n = 3 * (ts.arpOct + 1); std::vector<int> seq;
+        if (ts.arpPatt == 0) for (int i = 0; i < n; i++) seq.push_back(i);
+        else if (ts.arpPatt == 1) for (int i = n - 1; i >= 0; i--) seq.push_back(i);
+        else if (ts.arpPatt == 2) { for (int i = 0; i < n; i++) seq.push_back(i); for (int i = n - 2; i > 0; i--) seq.push_back(i); }
+        else if (ts.arpPatt == 3) { for (int i = 0, j = n - 1; i <= j; i++, j--) { seq.push_back(i); if (i != j) seq.push_back(j); } }
+        else { unsigned s = 5; for (int i = 0; i < std::max(8, n); i++) { s = s * 1103515245u + 12345u; seq.push_back((int)(s >> 16) % n); } }
+        { const std::vector<int> one = seq; while (seq.size() < 12) seq.insert(seq.end(), one.begin(), one.end()); }   // short patterns repeat to fill the picture
+        const float pitch = (w.w - 12) / std::max<float>(12, (float)seq.size()), bw = pitch * (0.25f + 0.65f * ts.arpLen);
+        const uint32_t c = ts.arpRate == 0 ? kLine : kPaper;
+        for (size_t i = 0; i < seq.size(); i++) rrect({w.x + 6 + i * pitch, base - (0.18f + 0.82f * (seq[i] + 1) / n) * H, bw, (0.18f + 0.82f * (seq[i] + 1) / n) * H}, 0, c);
+        break; }
+    case P::P_SEQ: {   // the tape: a wave that wobbles (wobble), saturates (exciter), turns into stairs (lo-fi); the speed sets how many cycles fit
+        head = "TAPE";
+        const float cyc = 2.f + 6.f * kn[0].norm, g = 1.f + 4.f * kn[1].norm, lo = kn[2].norm, wob = kn[3].norm;
+        const float steps = std::max(24.f, 150.f - lo * 126.f), lev = std::max(3.f, 40.f - lo * 37.f), amp = w.h / 2 - 6;
+        std::vector<std::pair<float, float>> pts; const int n = 150;
+        for (int i = 0; i <= n; i++) {
+            const float tt = std::floor((float)i / n * steps) / steps, ph = 2 * kPi * (cyc * tt + 0.12f * wob * std::sin(2 * kPi * 1.7f * tt));
+            float v = std::tanh(g * std::sin(ph)) / std::tanh(g); v = std::round(v * lev) / lev;
+            pts.push_back({w.x + 4 + i * (w.w - 8) / n, cy - v * amp});
+        }
+        poly(pts, kPaper, 2.7f);
+        break; }
+    case P::P_MIX: {   // eight faders, one per track: the cap is the volume, the orange bar next to it the live level, the selected track is orange
+        head = "TRACK LEVELS";
+        const float cw = w.w / 8;
+        for (int i = 0; i < 8; i++) {
+            const float x = w.x + (i + 0.5f) * cw, top = w.y + 6, bot = w.y + w.h - 16, v = app_.state(i).vol, y = bot - v * (bot - top), sel = i == t;
+            vbar(x, top, bot, kLine, 2.7f);
+            vbar(x + 11, bot, bot - std::min(1.f, st_.track_peak[i] * 1.5f) * (bot - top), kOrange, 3);
+            rrect({x - 9, y - 2.5f, 18, 5}, 0, sel ? kOrange : kPaper);
+            text(x, w.y + w.h - 5, 9, sel ? kOrange : kDim, std::to_string(i + 1), 1, true);
+        }
+        break; }
+    case P::P_KEY: {   // two octaves of semitones: the scale in ink, the root in orange, the rest dim
+        const auto sc = app_.scale();
+        head = std::string(P::noteName(sc.root)) + " " + P::scaleName(sc.scale);
+        const float pitch = w.w / 24, kh = 44;
+        for (int i = 0; i < 24; i++) {
+            const int pc = i % 12; const bool in = P::inScale(sc.scale, pc);
+            rrect({w.x + i * pitch + 2, cy - kh / 2 - 4, pitch - 4, kh}, 0, pc == 0 ? kOrange : in ? kPaper : kLine);
+            if (pc == 0) text(w.x + i * pitch + pitch / 2, cy + kh / 2 + 12, 9, kDim, P::noteName((sc.root + pc) % 12), 1, true);
+        }
+        break; }
+    case P::P_SAVE: {   // what a take records: the input level against the trigger line, the source in big dim letters
+        head = std::string("SOURCE: ") + kn[1].value;
+        const float thr = app_.micThreshold01(), lv = std::min(1.f, st_.inputPeak * 2.f), x0 = w.x + 4, ww = w.w - 8;
+        rrect({x0, cy - 5, ww, 10}, 0, kLine);
+        rrect({x0, cy - 5, std::max(2.f, ww * lv), 10}, 0, lv > std::min(1.f, 2.f * app_.micThreshold()) ? kOrange : kPaper);
+        vbar(x0 + ww * thr, cy - 26, cy + 26, kOrange, 2.7f);
+        text(x0, w.y + w.h - 8, 9, kDim, "TRIGGER LEVEL " + num("%.0f DB", 20 * std::log10(app_.micThreshold())), 0, true);
+        break; }
+    case P::P_LEN: {   // the loop as bars: one block per bar with its beats, the orange playhead
+        const int bars = std::max(1, st_.loopBars), shown = std::min(bars, 16);
+        head = bars > 0 && st_.loopSamples > 0 ? std::to_string(bars) + (bars == 1 ? " BAR  " : " BARS  ") + num("%.0f BPM", st_.bpm) : "NO LOOP";
+        const float gap = 4, bw = (w.w - gap * (shown - 1)) / shown, bh = 44;
+        for (int b = 0; b < shown; b++) {
+            const float x = w.x + b * (bw + gap);
+            rrect({x, cy - bh / 2, bw, bh}, 0, st_.loopSamples > 0 ? kPaper : kLine);
+            for (int q = 1; q < 4; q++) vbar(x + bw * q / 4, cy - bh / 2 + 4, cy + bh / 2 - 4, kBg, 1.2f);
+        }
+        if (st_.loopSamples > 0) vbar(w.x + std::min(1.f, loopPos()) * w.w, cy - 34, cy + 34, kOrange, 2.7f);
+        break; }
+    default: break;
+    }
+    text(r.x, r.y + 8, 12, kPaper, head, 0, true);
+    const int nv = st_.voiceN[t];
+    if (nv > 0) text(r.x + r.w, r.y + 8, 11, kOrange, std::to_string(nv) + (nv == 1 ? " VOICE" : " VOICES"), 2, true);
+}
+
 // The sample of the selected track: its waveform (the playback window bright), the playback mode, and a line for every sounding voice.
 void SamplerUI::sampleView(Rect r) {
     const int t = app_.track();
     const auto ts = app_.state(t);
     const int micS = app_.micState();
+    if (app_.page() != SamplerApp::P_HOME && micS == 0) { pageView(r); return; }   // every other page draws what it edits
     text(r.x, r.y + 8, 12, micS == 1 || micS == 2 ? kOrange : kPaper, micS == 1 ? "MIC: WAITING FOR SOUND" : micS == 2 ? "MIC: RECORDING " + num("%.1f", st_.sampleSeconds) + " S" : micS == 3 ? "MIC: SAVING" : SamplerApp::algoName(ts.algo), 0, true);
     tap({r.x, r.y, 120, 18}, [this, ts] { app_.setAlgo((ts.algo + 1) % 6); });   // tap the mode: the next one
     if (ts.algo <= 1) {   // auto-tune (MELODIC, ONE-SHOT): a tuning fork at the right end of the header; orange while the sample is tuned

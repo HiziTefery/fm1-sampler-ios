@@ -41,6 +41,7 @@ private:
     void setLight(bool on);
     void cassette(Rect r);
     void sampleView(Rect r);
+    void pageView(Rect r);   // the schematic of the active page in the place of the sample
     void knob(float cx, float cy, SamplerApp::Page page, int idx, bool unused = false);
     void timeline(Rect r);
     void key(Rect r, const std::string& label, int icon, bool on, std::function<void()> f, bool hot);

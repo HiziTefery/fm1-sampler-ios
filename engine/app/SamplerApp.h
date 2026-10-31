@@ -101,6 +101,7 @@ public:
     ScaleState scale() const { return scale_; }
     void setScale(int scale, int root, int octave, int mode);
     static const char* scaleName(int i);
+    static bool inScale(int scale, int pitchClass);   // pitch class relative to the root: does it belong to the scale (OFF: only the root)
     static const char* noteName(int r);
     void playNote(int note, bool down);
     void keyEvent(int rawNote, bool down);        // FM-1 key: chromatic note from the firmware
