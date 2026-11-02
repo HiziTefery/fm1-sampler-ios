@@ -5,7 +5,7 @@ control surface (keys, buttons, 7 encoders), the second screen (240x240, drawn w
 All DSP is original code in `engine/dsp` (no third-party audio engine); the only library is KissFFT (BSD) for the Paulstretch mode.
 
 ## Screenshots
-FM-1 second screen (240x240, from the host simulator `app_sim`: sample, edit, envelope, LFO, arp, tape, mixer, loop length, key, mic waiting, rec armed, loop playing):
+FM-1 second screen (240x240, from the host simulator `app_sim`: sample, FX, envelope, LFO, arp, tape, mixer, key, mic waiting, rec armed, loop playing, loop length):
 
 ![FM-1 screens](shots/readme_fm1.png)
 
