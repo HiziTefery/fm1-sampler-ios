@@ -17,10 +17,6 @@ The same screen while the first loop is recorded (its waveform grows on the time
 
 ![First take](shots/readme_firstrec.png) ![Microphone](shots/readme_mic.png)
 
-Phone app, EDIT view (the older editor: sample with voice positions and the whole-loop lane, voices, LOOP page, LENGTH page, mic recording, library):
-
-![Phone app](shots/readme_phone.png)
-
 ## Downloads
 APK and the flash page of the matching firmware are attached to the [releases](../../releases) of this repository. Flash the firmware first (SEL = loop length page needs it), then install the APK.
 
