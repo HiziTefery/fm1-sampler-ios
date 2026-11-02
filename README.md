@@ -104,5 +104,5 @@ Host-tested only (test_app all green, screenshots of both screens checked). **No
 
 ## Branches
 - `main` = v0.10.
-- `cassette-deck` = v0.11 .. v0.30 (this README): the phone screen is the tape deck; no patterns and no punch-in effects; the FM-1 screen is unchanged.
+- `cassette-deck` = v0.11 .. v0.37 (this README, current development branch, pushed to origin): the phone screen is the tape deck; no patterns and no punch-in effects. From v0.30 the phone and the FM-1 screen share one visual system (light default theme with a dark variant, ring knobs). v0.32..v0.37 add page schematics in the place of the sample (FX, ENV, LFO, ARP, TAPE, MIXER, KEY, LOOP, LENGTH), per-mode K3/K4 on the sample page (KIT threshold + slice markers, GRAIN count + size, PAUL stretch + width), FX as global send effects with per-track sends, and MIXER = volume + sidechain compressor with a scrolling wave picture. Last APK: `fm1sampler-v0.37.apk`; host-tested only.
 - `patterns-punchin`: the parked patterns (LEN + keys 1..8) and punch-in effects (MIXER keys), host-tested.
