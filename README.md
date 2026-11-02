@@ -7,15 +7,15 @@ All DSP is original code in `engine/dsp` (no third-party audio engine); the only
 ## Screenshots
 FM-1 second screen (240x240, from the host simulator `app_sim`: sample, FX, envelope, LFO, arp, tape, mixer, key, mic waiting, rec armed, loop playing, loop length):
 
-![FM-1 screens](shots/readme_fm1.png)
+![FM-1 screens](shots/readme_fm1_v37.png)
 
 Phone app, main screen = the tape deck (light theme by default, the dark one is one tap away; ink / dim / orange): the tape loop, PLAY / STOP / REC / CLEAR under it, the sample of the selected track with its mode and sounding voices, the four knobs of the current page, one timeline of the selected track:
 
-![Cassette deck](shots/readme_deck.png)
+![Cassette deck](shots/readme_deck_v37.png)
 
 The same screen while the first loop is recorded (its waveform grows on the timeline) and while a microphone take waits for sound (level, trigger lines, STOP / CANCEL):
 
-![First take](shots/readme_firstrec.png) ![Microphone](shots/readme_mic.png)
+![First take](shots/readme_firstrec_v37.png) ![Microphone](shots/readme_mic_v37.png)
 
 ## Downloads
 APK and the flash page of the matching firmware are attached to the [releases](../../releases) of this repository. Flash the firmware first (SEL = loop length page needs it), then install the APK.
