@@ -26,14 +26,16 @@ jobs:
         run: |
           cd ios
           xcodebuild -project FM1Sampler.xcodeproj -scheme FM1Sampler -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -n 60
-          exit ${PIPESTATUS[0]}
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > sim.log 2>&1 \
+            || { grep -n -B2 -A8 'error:' sim.log | head -n 200; tail -n 15 sim.log; exit 1; }
+          tail -n 3 sim.log
       - name: Build for the device (unsigned)
         run: |
           cd ios
           xcodebuild -project FM1Sampler.xcodeproj -scheme FM1Sampler -configuration Release \
-            -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -n 60
-          test ${PIPESTATUS[0]} -eq 0
+            -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > device.log 2>&1 \
+            || { grep -n -B2 -A8 'error:' device.log | head -n 200; tail -n 15 device.log; exit 1; }
+          tail -n 3 device.log
           mkdir Payload && cp -R build/Build/Products/Release-iphoneos/FM1Sampler.app Payload/
           zip -qry FM1Sampler-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4

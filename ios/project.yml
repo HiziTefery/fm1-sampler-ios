@@ -26,17 +26,11 @@ targets:
     sources:
       - path: FM1Sampler
       - path: ../engine/dsp
-        group: engine
       - path: ../engine/session
-        group: engine
       - path: ../engine/app
-        group: engine
       - path: ../engine/ui
-        group: engine
       - path: ../engine/host
-        group: engine
       - path: ../engine/3rdparty/kissfft
-        group: engine
         includes:
           - kiss_fft.c
           - kiss_fftr.c
