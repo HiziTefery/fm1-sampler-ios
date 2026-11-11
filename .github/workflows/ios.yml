@@ -26,7 +26,7 @@ jobs:
         run: |
           cd ios
           xcodebuild -project FM1Sampler.xcodeproj -scheme FM1Sampler -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > sim.log 2>&1 \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO build > sim.log 2>&1 \
             || { grep -n -B2 -A8 'error:' sim.log | head -n 200; tail -n 15 sim.log; exit 1; }
           tail -n 3 sim.log
       - name: Build for the device (unsigned)
@@ -42,3 +42,22 @@ jobs:
         with:
           name: FM1Sampler-unsigned-ipa
           path: ios/FM1Sampler-unsigned.ipa
+      # The app really starts: it must still be alive after 20 s, and a screenshot of what it draws is kept.
+      - name: Run in the simulator
+        run: |
+          cd ios
+          ID=$(xcrun simctl create fm1 "iPhone 16")
+          xcrun simctl boot "$ID"
+          xcrun simctl bootstatus "$ID" -b | tail -n 2
+          xcrun simctl install "$ID" build-sim/Build/Products/Debug-iphonesimulator/FM1Sampler.app
+          xcrun simctl privacy "$ID" grant microphone com.ferluht.fm1sampler
+          xcrun simctl launch "$ID" com.ferluht.fm1sampler
+          sleep 20
+          xcrun simctl io "$ID" screenshot simulator.png
+          xcrun simctl spawn "$ID" log show --last 2m --style compact --predicate 'process == "FM1Sampler"' | grep -i "fm1sampler:\|crash\|exception" | tail -n 40 || true
+          xcrun simctl spawn "$ID" launchctl list | grep com.ferluht.fm1sampler
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-screenshot
+          path: ios/simulator.png
