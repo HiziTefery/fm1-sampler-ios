@@ -57,8 +57,12 @@ jobs:
           xcrun simctl spawn "$ID" log show --last 2m --style compact --predicate 'process == "FM1Sampler"' | grep -i "fm1sampler:\|crash\|exception" | tail -n 40 || true
           xcrun simctl spawn "$ID" launchctl list | grep com.ferluht.fm1sampler
           # a small copy of the screenshot in the log, for whoever cannot download the artifact
-          sips -s format jpeg -s formatOptions 55 -Z 1400 simulator.png --out small.jpg > /dev/null
-          echo SHOT_BEGIN; base64 -b 160 -i small.jpg; echo SHOT_END
+          # (printed slowly and with line numbers: the log drops lines of a fast burst)
+          sips -s format jpeg -s formatOptions 45 -Z 1200 simulator.png --out small.jpg > /dev/null
+          base64 -b 160 -i small.jpg > small.b64; echo >> small.b64
+          echo "SHOT_BEGIN $(wc -l < small.b64)"
+          n=0; while read -r l; do n=$((n+1)); echo "SHOT $n $l"; sleep 0.03; done < small.b64
+          echo SHOT_END
       - uses: actions/upload-artifact@v4
         if: always()
         with:
