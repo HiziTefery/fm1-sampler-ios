@@ -1,0 +1,42 @@
+# Builds the iOS app (no signing) and runs the host tests of the engine, so the port stays buildable without a Mac at hand.
+name: iOS
+on:
+  push:
+    paths: ['engine/**', 'ios/**', 'samples/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['engine/**', 'ios/**', 'samples/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host tests of the engine glue
+        run: |
+          ln -s "$GITHUB_WORKSPACE" "$HOME/fm1-sampler"
+          make -C engine -j4
+          make "$PWD/engine/build/test_host"
+          engine/build/test_host
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+      - name: Build for the simulator
+        run: |
+          cd ios
+          xcodebuild -project FM1Sampler.xcodeproj -scheme FM1Sampler -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -n 60
+          exit ${PIPESTATUS[0]}
+      - name: Build for the device (unsigned)
+        run: |
+          cd ios
+          xcodebuild -project FM1Sampler.xcodeproj -scheme FM1Sampler -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -n 60
+          test ${PIPESTATUS[0]} -eq 0
+          mkdir Payload && cp -R build/Build/Products/Release-iphoneos/FM1Sampler.app Payload/
+          zip -qry FM1Sampler-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FM1Sampler-unsigned-ipa
+          path: ios/FM1Sampler-unsigned.ipa

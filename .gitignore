@@ -15,3 +15,6 @@ __pycache__/
 firmware/FM1-DAW-Workbench.html
 android/app/.cxx/
 android/**/.cxx/
+# iOS: the Xcode project is generated from ios/project.yml (xcodegen)
+ios/*.xcodeproj/
+ios/build/

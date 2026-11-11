@@ -1,0 +1,82 @@
+# XcodeGen spec of the iOS app:  brew install xcodegen && cd ios && xcodegen generate && open FM1Sampler.xcodeproj
+# The app is the shared C++ engine (../engine) plus the Objective-C++ sources in FM1Sampler/.
+name: FM1Sampler
+options:
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.37"
+    CURRENT_PROJECT_VERSION: "37"
+    CLANG_CXX_LANGUAGE_STANDARD: "c++20"
+    CLANG_CXX_LIBRARY: "libc++"
+    CLANG_ENABLE_OBJC_ARC: YES
+schemes:
+  FM1Sampler:
+    build:
+      targets:
+        FM1Sampler: all
+    run:
+      config: Debug
+targets:
+  FM1Sampler:
+    type: application
+    platform: iOS
+    sources:
+      - path: FM1Sampler
+      - path: ../engine/dsp
+        group: engine
+      - path: ../engine/session
+        group: engine
+      - path: ../engine/app
+        group: engine
+      - path: ../engine/ui
+        group: engine
+      - path: ../engine/host
+        group: engine
+      - path: ../engine/3rdparty/kissfft
+        group: engine
+        includes:
+          - kiss_fft.c
+          - kiss_fftr.c
+          - kiss_fft.h
+          - kiss_fftr.h
+          - kiss_fft_log.h
+          - _kiss_fft_guts.h
+      # the bundled sample library, copied into the app as the folder "samples" (the engine reads plain files)
+      - path: ../samples
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
+      - sdk: CoreGraphics.framework
+      - sdk: QuartzCore.framework
+      - sdk: AVFoundation.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreAudio.framework
+      - sdk: CoreMIDI.framework
+      - sdk: UniformTypeIdentifiers.framework
+    settings:
+      base:
+        PRODUCT_NAME: FM1Sampler
+        PRODUCT_BUNDLE_IDENTIFIER: com.ferluht.fm1sampler
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/../engine/dsp
+          - $(SRCROOT)/../engine/session
+          - $(SRCROOT)/../engine/app
+          - $(SRCROOT)/../engine/ui
+          - $(SRCROOT)/../engine/host
+          - $(SRCROOT)/../engine/3rdparty/kissfft
+        # the FM-1 runs its USB audio at 44.1 kHz, so the whole engine does too
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - $(inherited)
+          - SAMPLERATE=44100
+        GCC_OPTIMIZATION_LEVEL: "2"      # also in Debug: the DSP has to run in real time
+        GCC_WARN_INHIBIT_ALL_WARNINGS: NO
+        ENABLE_BITCODE: NO
