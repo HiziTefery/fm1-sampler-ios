@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel   # the arm64 Mac runners are short of capacity (jobs time out in the queue)
     steps:
       - uses: actions/checkout@v4
       - name: Host tests of the engine glue
