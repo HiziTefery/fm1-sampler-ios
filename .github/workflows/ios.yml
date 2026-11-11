@@ -16,7 +16,7 @@ jobs:
         run: |
           ln -s "$GITHUB_WORKSPACE" "$HOME/fm1-sampler"
           make -C engine -j4
-          make "$PWD/engine/build/test_host"
+          make -C engine "$PWD/engine/build/test_host"
           engine/build/test_host
       - name: Generate the Xcode project
         run: |
